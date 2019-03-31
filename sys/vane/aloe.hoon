@@ -227,21 +227,65 @@
 +$  message-descriptor  [=message-id encoding-num=@ num-fragments=@]
 +$  message-id          [=bone =message-seq]
 +$  message-seq         @ud
-+$  packet-id           @uvH
++$  fragment-num        @ud
++$  fragment-index      [=message-seq =fragment-num]
++$  packet-hash           @uvH
 +$  error               [tag=@tas =tang]
 +$  packet              [[to=ship from=ship] =encoding payload=@]
 +$  encoding            ?(%none %open %fast %full)
+::  +live-packet: data needed to track a packet in flight
+::
+::    Prepends :expiration-date and :sent-date to a +packet-descriptor.
+::
++$  live-packet
+  %-  expiring
+  $:  sent-date=@da
+      =packet-descriptor
+  ==
+::  +packet-descriptor: immutable data for an enqueued, possibly sent, packet
+::
+::    TODO: what is the virgin field?
+::
++$  packet-descriptor
+  $:  virgin=?
+      =fragment-index
+      =packet-hash
+      payload=@
+  ==
+::  +pump-state: all data relevant to a per-ship |packet-pump
+::
+::    Note that while :live and :lost are structurally normal queues,
+::    we actually treat them as bespoke priority queues.
+::
++$  pump-state
+  $:  live=(qeu live-packet)
+      lost=(qeu packet-descriptor)
+      =pump-statistics
+  ==
+::  +pump-statistics: congestion control information
+::
+::    TODO: document
+::
++$  pump-statistics
+  $:  $:  window-length=@ud
+          max-packets-out=@ud
+          retry-length=@ud
+      ==
+      $:  rtt=@dr
+          last-sent=@da
+          last-deadline=@da
+  ==  ==
 ::  +meal: packet payload
 ::
 +$  meal
   $%  ::  %back: acknowledgment
       ::
       ::    bone: opaque flow identifier
-      ::    packet-id: hash of acknowledged contents
+      ::    packet-hash: hash of acknowledged contents
       ::    error: non-null iff nack (negative acknowledgment)
       ::    wtf: TODO what is this
       ::
-      [%back =bone =packet-id error=(unit error) wtf=@dr]
+      [%back =bone =packet-hash error=(unit error) wtf=@dr]
       ::  %bond: full message
       ::
       ::    message-id: pair of flow id and message sequence number
@@ -272,7 +316,7 @@
 ::    TODO: do we need the map of her public keys, or just her current key?
 ::
 +$  pipe
-  $:  fast-key=(unit [=key-hash key=(expiring symmetric-key)])
+  $:  fast-key=(unit [=key-hash key=(expiring =symmetric-key)])
       her-life=(unit life)
       her-public-keys=(map life public-key)
       her-sponsors=(list ship)
@@ -282,10 +326,10 @@
 +$  deed  (attested [=life =public-key =signature])
 ::  +expiring: a value that expires at the specified date
 ::
-+*  expiring  [value]  [expiration-date=@da =value]
++*  expiring  [value]  [expiration-date=@da value]
 ::  +attested: a value signed by :ship.oath to attest to its validity
 ::
-+*  attested  [value]  [oath=[=ship =life =signature] =value]
++*  attested  [value]  [oath=[=ship =life =signature] value]
 ::
 ++  packet-format
   |%
@@ -402,6 +446,266 @@
   ::
   ++  event-core  .
   --
+::  |pump: packet pump state machine
+::
+++  pump
+  =>  |%
+      ::  +gift: packet pump effect; either %good logical ack, or %send packet
+      ::
+      ++  gift
+        $%  [%good =packet-hash =fragment-index rtt=@dr error=(unit error)]
+            [%send =packet-hash =fragment-index payload=@]
+            ::  TODO [%wait @da] to set timer
+        ==
+      ::  +task: request to the packet pump
+      ::
+      ++  task
+        $%  ::  %back: raw acknowledgment
+            ::
+            ::    packet-hash: the hash of the packet we're acknowledging
+            ::    error: non-null if negative acknowledgment (nack)
+            ::    lag: self-reported computation lag, to be factored out of RTT
+            ::
+            [%back =packet-hash error=(unit error) lag=@dr]
+            ::  %cull: cancel message
+            ::
+            [%cull =message-seq]
+            ::  %pack: enqueue packets for sending
+            ::
+            [%pack packets=(list packet-descriptor)]
+            ::  %wake: timer expired
+            ::
+            ::    TODO: revisit after timer refactor
+            ::
+            [%wake ~]
+        ==
+      --
+  |=  =pump-state
+  =|  gifts=(list gift)
+  |%
+  ::  |entry-points: external interface to the |pump core
+  ::
+  +|  %entry-points
+  ::  +call: handle +task request, producing effects and new +pump-state
+  ::
+  ++  call
+    |=  [now=@da =task]
+    ^+  [gifts pump-state]
+    ::
+    =<  abet
+    ^+  pump-core
+    ::
+    ?-  -.task
+      %back  (back now [packet-hash error lag]:task)
+      %cull  (cull now message-seq.task)
+      %pack  (send-packets now packets.task)
+      %wake  (wake now)
+    ==
+  ::  +next-wakeup: when should this core wake back up to do more processing?
+  ::
+  ::    Produces null if no wakeup needed.
+  ::    TODO: call in +abet to produce a set-timer effect
+  ::
+  ++  next-wakeup
+    ^-  (unit @da)
+    =/  next-expiring-packet=(unit live-packet)  ~(top to live.pump-state)
+    ?~  next-expiring-packet
+      ~
+    `expiration-date.u.next-expiring-packet
+  ::  +window-slots: how many packets can be sent before window fills up?
+  ::
+  ::   Called externally to query window information.
+  ::
+  ++  window-slots
+    ^-  @ud
+    =,  pump-statistics.pump-state
+    ::
+    (sub-safe max-packets-out (add window-length retry-length))
+  ::  %utilities: helper arms
+  ::
+  +|  %utilities
+  ::  +back: process raw ack
+  ::
+  ::    TODO: better docs
+  ::    TODO: verify queue invariants
+  ::
+  ++  back
+    |=  [now=@da =packet-hash error=(unit error) lag=@dr]
+    ^+  pump-core
+    ::  post-process by adjusting timing information and losing packets
+    ::
+    =-  =.  live.pump-state  lov
+        =.  pump-core  (lose ded)
+        ::  rtt: roundtrip time, subtracting reported computation :lag
+        ::
+        =/  rtt=@dr
+          ?~  ack  ~s0
+          (sub-safe (sub now sent-date.u.ack) lag)
+        ::
+        (done ack packet-hash error rtt)
+    ::  liv: iteratee starting as :live.pump-state
+    ::
+    =/  liv=(qeu live-packet)  live.pump-state
+    ::  main loop
+    ::
+    |-  ^-  $:  ack=(unit live-packet)
+                ded=(list live-packet)
+                lov=(qeu live-packet)
+            ==
+    ?~  liv  [~ ~ ~]
+    ::  ryt: result of searching the right (front) side of the queue
+    ::
+    =+  ryt=$(liv r.liv)
+    ::  found in front; no need to search back
+    ::
+    ?^  ack.ryt  [ack.ryt ded.ryt liv(r lov.ryt)]
+    ::  lose unacked packets sent before an acked virgin.
+    ::
+    ::    Uses head recursion to produce :ack, :ded, and :lov.
+    ::
+    =+  ^-  $:  top=?
+                ack=(unit live-packet)
+                ded=(list live-packet)
+                lov=(qeu live-packet)
+            ==
+        ?:  =(packet-hash packet-hash.packet-descriptor.n.liv)
+          [| `n.liv ~ l.liv]
+        [& $(liv l.liv)]
+    ::
+    ?~  ack  [~ ~ liv]
+    ::
+    =*  virgin  virgin.packet-descriptor.u.ack
+    ::
+    =?  ded  top     [n.liv ded]
+    =?  ded  virgin  (weld ~(tap to r.liv) ded)
+    =?  lov  top     [n.liv lov ~]
+    ::
+    [ack ded lov]
+  ::  +cancel-message: unqueue all packets from :message-seq
+  ::
+  ++  cull
+    |=  [now=@da =message-seq]
+    ^+  pump-core
+    !!  ::  TODO
+  ::  +done: process a cooked ack; may emit a %good ack gift
+  ::
+  ++  done
+    |=  $:  live-packet=(unit live-packet)
+            =packet-hash
+            error=(unit error)
+            rtt=@dr
+        ==
+    ^+  pump-core
+    ?~  live-packet
+      pump-core
+    ::
+    =*  fragment-index  fragment-index.packet-descriptor.u.live-packet
+    =.  pump-core  (give [%good packet-hash fragment-index rtt error])
+    ::
+    =.  window-length.pump-statistics.pump-state
+      (dec window-length.pump-statistics.pump-state)
+    ::
+    pump-core
+  ::  +enqueue-lost-packet: ordered enqueue into :lost.pump-state
+  ::
+  ::    The :lost queue isn't really a queue in case of
+  ::    resent packets; packets from older messages
+  ::    need to be sent first. Unfortunately hoon.hoon
+  ::    lacks a general sorted/balanced heap right now.
+  ::    so we implement a balanced queue insert by hand.
+  ::
+  ::    This queue is ordered by:
+  ::      - message sequence number
+  ::      - fragment number within the message
+  ::      - packet-hash
+  ::
+  ::    TODO: why do we need the packet-hash tiebreaker?
+  ::    TODO: write queue order function
+  ::
+  ++  enqueue-lost-packet
+    ::
+    |=  pac=packet-descriptor
+    ^+  lost.pump-state
+    ::
+    =/  lop  lost.pump-state
+    ::
+    |-  ^+  lost.pump-state
+    ?~  lop  [pac ~ ~]
+    ::
+    ?:  ?|  (older fragment-index.pac fragment-index.n.lop)
+            ?&  =(fragment-index.pac fragment-index.n.lop)
+                (lth packet-hash.pac packet-hash.n.lop)
+        ==  ==
+      lop(r $(lop r.lop))
+    lop(l $(lop l.lop))
+  ::  +fire-packet: emit a %send gift for a packet and do bookkeeping
+  ::
+  ++  fire-packet
+    |=  [now=@da pac=packet-descriptor]
+    ^+  pump-core
+    ::
+    !!  ::  TODO
+  ::  +lose: abandon packets
+  ::
+  ++  lose
+    |=  packets=(list live-packet)
+    ^+  pump-core
+    ?~  packets  pump-core
+    ::
+    =.  lost.pump-state  (enqueue-lost-packet packet-descriptor.i.packets)
+    ::
+    %=    $
+        packets  t.packets
+    ::
+        window-length.pump-statistics.pump-state
+      (dec window-length.pump-statistics.pump-state)
+    ::
+        retry-length.pump-statistics.pump-state
+      +(retry-length.pump-statistics.pump-state)
+    ==
+  ::  +send-packets: send packets until window closes; sends from backlog first
+  ::
+  ++  send-packets
+    |=  [now=@da packets=(list packet-descriptor)]
+    ^+  pump-core
+    ::  if our outgoing queue is full, no-op, dropping new packets
+    ::
+    ::    TODO: is it ok to just drop the supplied packets without enqueueing
+    ::    them somewhere?
+    ::
+    ?:  (gte [window-length max-packets-out]:pump-statistics.pump-state)
+      pump-core
+    ::  if no packets to retry, start sending new packets
+    ::
+    ?:  =(0 retry-length.pump-statistics.pump-state)
+      ?~  packets
+        pump-core
+      ::
+      =.  pump-core  (fire-packet now i.packets)
+      $(packets t.packets)
+    ::  send a lost packet from our backlog
+    ::
+    =^  lost-packet  lost.pump-state  ~(get to lost.pump-state)
+    =.  retry-length.pump-statistics.pump-state
+      (dec retry-length.pump-statistics.pump-state)
+    ::
+    =.  pump-core  (fire-packet now lost-packet)
+    $
+  ::  +wake: handle elapsed timer
+  ::
+  ++  wake
+    |=  now=@da
+    ^+  pump-core
+    ::
+    !!  ::  TODO
+  ::  +abet: finalize core, reversing effects
+  ::
+  ++  abet  [(flop gifts) pump-state]
+  ::  +give: emit effect, prepended to :gifts to be reversed before emission
+  ::
+  ++  give  |=(=gift pump-core(gifts [gift gifts]))
+  ++  pump-core  .
+  --
 ::  +encode-meal: generate a message and packets from a +meal, with effects
 ::
 ++  encode-meal
@@ -478,7 +782,7 @@
       :-  %fast
       %^  cat  7
         key-hash.u.fast-key.pipe
-      (en:crub:crypto value.key.u.fast-key.pipe (jam meal))
+      (en:crub:crypto symmetric-key.key.u.fast-key.pipe (jam meal))
     ::  if we don't know their life, just sign this packet without encryption
     ::
     ?~  her-life.pipe
@@ -590,7 +894,7 @@
     ::
     %+  produce-meal  authenticated=%.y
     %-  need
-    (de:crub:crypto value.key.u.fast-key.pipe payload)
+    (de:crub:crypto symmetric-key.key.u.fast-key.pipe payload)
   ::  +decode-full: decode a packet with asymmetric encryption
   ::
   ++  decode-full
@@ -625,7 +929,7 @@
     |=  =deed
     ^+  decoder-core
     ::
-    =+  [life public-key signature]=value.deed
+    =+  [expiration-date life public-key signature]=deed
     ::  if we already know the public key for this life, noop
     ::
     ?:  =(`public-key (~(get by her-public-keys.pipe) life))
@@ -802,4 +1106,23 @@
   ^-  (unit @)
   ::
   (sure:as:(com:nu:crub:crypto public-key) signed-buffer)
+::  +older: is fragment-index :a older than fragment-index :b?
+::
+++  older
+  |=  [a=fragment-index b=fragment-index]
+  ^-  ?
+  ?:  (lth message-seq.a message-seq.b)
+    %.y
+  ::
+  ?&  =(message-seq.a message-seq.b)
+      (lth fragment-num.a fragment-num.b)
+  ==
+::  +sub-safe: subtract :b from :a unless :a is bigger, in which case produce 0
+::
+++  sub-safe
+  |=  [a=@ b=@]
+  ^-  @
+  ?:  (lth a b)
+    0
+  (sub a b)
 --
