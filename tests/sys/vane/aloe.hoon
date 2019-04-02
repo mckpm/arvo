@@ -352,6 +352,46 @@
       !>  lost.result1
   ==
 ::
+++  test-pump-pack  ^-  tang
+  ::
+  =/  =pump-state:aloe
+    :+  live=~
+      lost=~
+    (initialize-pump-statistics:(pump:aloe) now.fix)
+  ::
+  =/  pump  (pump:aloe pump-state)
+  ::
+  =/  packets=(list packet-descriptor:aloe)
+    %+  turn  (gulf 1 7)
+    |=  n=@
+    ^-  packet-descriptor:aloe
+    ::
+    =|  =packet-descriptor:aloe
+    %_  packet-descriptor
+      virgin          %.n
+      fragment-index  [message-seq=42 fragment-num=n]
+      packet-hash     `@uvH`(shaf n n)
+      payload         n
+    ==
+  ::
+  =/  result1=[gifts=(list gift:pump:aloe) =pump-state:aloe]
+    (work:pump now.fix [%pack packets])
+  ::
+  ;:  weld
+    %+  expect-eq
+      !>  :*  ^=  window-length    2
+              ^=  max-packets-out  2
+              ^=  retry-length     0
+          ==
+      !>  -.pump-statistics.pump-state.result1
+  ::
+    %+  expect-eq
+      !>  :~  [%send [packet-hash fragment-index payload]:(snag 0 packets)]
+              [%send [packet-hash fragment-index payload]:(snag 1 packets)]
+          ==
+      !>  gifts.result1
+  ==
+::
 ++  aloe-call
   |=  $:  aloe-gate=_aloe-gate
           now=@da

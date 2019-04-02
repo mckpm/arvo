@@ -523,6 +523,8 @@
     (sub-safe max-packets-out (add window-length retry-length))
   ::  +initialize-pump-statistics: make blank stats from :now, stateless
   ::
+  ::    TODO: awkward calling convention; move outside |pump ?
+  ::
   ++  initialize-pump-statistics
     |=  now=@da
     ^-  pump-statistics
