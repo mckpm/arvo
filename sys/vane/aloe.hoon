@@ -521,13 +521,27 @@
     =,  pump-statistics.pump-state
     ::
     (sub-safe max-packets-out (add window-length retry-length))
+  ::  +initialize-pump-statistics: make blank stats from :now, stateless
+  ::
+  ++  initialize-pump-statistics
+    |=  now=@da
+    ^-  pump-statistics
+    ::
+    :*  :*  ^=  window-length    0
+            ^=  max-packets-out  2
+            ^=  retry-length     0
+        ==
+        :*  ^=  rtt              ~s5
+            ^=  last-sent        `@da`(sub now ~d1)
+            ^=  last-deadline    `@da`(sub now ~d1)
+    ==  ==
   ::  %utilities: helper arms
   ::
   +|  %utilities
   ::  +back: process raw ack
   ::
   ::    TODO: better docs
-  ::    TODO: verify queue invariants
+  ::    TODO: test to verify queue invariants
   ::
   ++  back
     |=  [now=@da =packet-hash error=(unit error) lag=@dr]

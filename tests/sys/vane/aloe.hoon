@@ -321,7 +321,7 @@
       %-  ~(gas to *(qeu packet-descriptor:aloe))
       lost-list
     ::
-    *pump-statistics:aloe
+    (initialize-pump-statistics:(pump:aloe) now.fix)
   ::
   =/  pump  (pump:aloe pump-state)
   ::  cull message 4
