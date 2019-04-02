@@ -486,9 +486,9 @@
   ::  |entry-points: external interface to the |pump core
   ::
   +|  %entry-points
-  ::  +call: handle +task request, producing effects and new +pump-state
+  ::  +work: handle +task request, producing effects and new +pump-state
   ::
-  ++  call
+  ++  work
     |=  [now=@da =task]
     ^+  [gifts pump-state]
     ::
@@ -497,7 +497,7 @@
     ::
     ?-  -.task
       %back  (back now [packet-hash error lag]:task)
-      %cull  (cull now message-seq.task)
+      %cull  (cull message-seq.task)
       %pack  (send-packets now packets.task)
       %wake  (wake now)
     ==
@@ -583,10 +583,41 @@
     [ack ded lov]
   ::  +cancel-message: unqueue all packets from :message-seq
   ::
+  ::    Clears all packets from a message from the :live and :lost queues.
+  ::
+  ::    TODO test
+  ::
   ++  cull
-    |=  [now=@da =message-seq]
+    |=  =message-seq
     ^+  pump-core
-    !!  ::  TODO
+    ::
+    =.  live.pump-state
+      =/  liv  live.pump-state
+      |-  ^+  live.pump-state
+      ?~  liv  ~
+      ::  first recurse on left and right trees
+      ::
+      =/  vil  liv(l $(liv l.liv), r $(liv r.liv))
+      ::  if the head of the tree is from the message to be deleted, cull it
+      ::
+      ?.  =(message-seq message-seq.fragment-index.packet-descriptor.n.liv)
+        vil
+      ~(nip to `(qeu live-packet)`vil)
+    ::
+    =.  lost.pump-state
+      =/  lop  lost.pump-state
+      |-  ^+  lost.pump-state
+      ?~  lop  ~
+      ::  first recurse on left and right trees
+      ::
+      =/  pol  lop(l $(lop l.lop), r $(lop r.lop))
+      ::  if the head of the tree is from the message to be deleted, cull it
+      ::
+      ?.  =(message-seq message-seq.fragment-index.n.lop)
+        pol
+      ~(nip to `(qeu packet-descriptor)`pol)
+    ::
+    pump-core
   ::  +done: process a cooked ack; may emit a %good ack gift
   ::
   ++  done
