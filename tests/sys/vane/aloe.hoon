@@ -282,6 +282,76 @@
       !>  ?>(?=(^ actual-gifts) -.i.actual-gifts)
   ==
 ::
+++  test-pump-cull  ^-  tang
+  ::
+  =/  live-list=(list live-packet:aloe)
+    %-  zing
+    ::
+    %+  turn  (gulf 1 5)
+    |=  message-num=@
+    ::
+    %+  turn  (gulf 42 47)
+    |=  fragment-num=@
+    ::
+    ^-  live-packet:aloe
+    ::
+    =|  =live-packet:aloe
+    live-packet(fragment-index.packet-descriptor [message-num fragment-num])
+  ::
+  =/  lost-list=(list packet-descriptor:aloe)
+    %-  zing
+    ::
+    %+  turn  (gulf 3 8)
+    |=  message-num=@
+    ::
+    %+  turn  (gulf 52 57)
+    |=  fragment-num=@
+    ::
+    ^-  packet-descriptor:aloe
+    ::
+    =|  =packet-descriptor:aloe
+    packet-descriptor(fragment-index [message-num fragment-num])
+  ::
+  =/  =pump-state:aloe
+    :+  ^=  live
+        %-  ~(gas to *(qeu live-packet:aloe))
+        live-list
+      ::
+      ^=  lost
+      %-  ~(gas to *(qeu packet-descriptor:aloe))
+      lost-list
+    ::
+    *pump-statistics:aloe
+  ::
+  =/  pump  (pump:aloe pump-state)
+  ::  cull message 4
+  ::
+  =/  result1=pump-state:aloe  +:(work:pump now.fix [%cull 4])
+  ::
+  ;:  weld
+    %+  expect-eq
+      !>  %-  ~(gas to *(qeu live-packet:aloe))
+          %+  skim  live-list
+          |=  =live-packet:aloe
+          ^-  ?
+          ::
+          ?=  ?(%1 %2 %3 %5)
+          message-seq.fragment-index.packet-descriptor.live-packet
+      ::
+      !>  live.result1
+  ::
+    %+  expect-eq
+      !>  %-  ~(gas to *(qeu packet-descriptor:aloe))
+          %+  skim  lost-list
+          |=  =packet-descriptor:aloe
+          ^-  ?
+          ::
+          ?=  ?(%3 %5 %6 %7 %8)
+          message-seq.fragment-index.packet-descriptor
+      ::
+      !>  lost.result1
+  ==
+::
 ++  aloe-call
   |=  $:  aloe-gate=_aloe-gate
           now=@da
