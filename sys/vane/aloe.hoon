@@ -674,8 +674,40 @@
   ++  fire-packet
     |=  [now=@da pac=packet-descriptor]
     ^+  pump-core
+    ::  stats: read-only accessor for convenience
     ::
-    !!  ::  TODO
+    =/  stats  pump-statistics.pump-state
+    ::  sanity check: make sure we don't exceed the max packets in flight
+    ::
+    ?>  (lth [window-length max-packets-out]:stats)
+    ::  reset :last-sent date to :now or incremented previous value
+    ::
+    =.  last-sent.pump-statistics.pump-state
+      ?:  (gth now last-sent.stats)
+        now
+      +(last-sent.stats)
+    ::  reset :last-deadline to twice roundtrip time from now, or increment
+    ::
+    =.  last-deadline.pump-statistics.pump-state
+      =/  new-deadline=@da  (add now (mul 2 rtt.stats))
+      ?:  (gth new-deadline last-deadline.stats)
+        new-deadline
+      +(last-deadline.stats)
+    ::  increment our count of packets in flight
+    ::
+    =.  window-length.pump-statistics.pump-state
+      +(window-length.pump-statistics.pump-state)
+    ::  register the packet in the :live queue
+    ::
+    =.  live.pump-state
+      %-  ~(put to live.pump-state)
+      ^-  live-packet
+      :+  last-deadline.pump-statistics.pump-state
+        last-sent.pump-statistics.pump-state
+      pac
+    ::  emit the packet
+    ::
+    (give [%send packet-hash fragment-index payload]:pac)
   ::  +lose: abandon packets
   ::
   ++  lose
