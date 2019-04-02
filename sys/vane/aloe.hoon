@@ -760,7 +760,47 @@
     |=  now=@da
     ^+  pump-core
     ::
-    !!  ::  TODO
+    =-  (lose(live.pump-state live.-) dead.-)
+    ::
+    ^-  [dead=(list live-packet) live=(qeu live-packet)]
+    ::
+    =|  dead=(list live-packet)
+    =/  live=(qeu live-packet)  live.pump-state
+    ::  binary search through :live for dead packets
+    ::
+    ::    The :live packet tree is sorted right-to-left by the packets'
+    ::    lost-by deadlines. Packets with later deadlines are on the left.
+    ::    Packets with earlier deadlines are on the right.
+    ::
+    ::    Start by examining the packet at the tree's root.
+    ::
+    ::      If the tree is empty (~):
+    ::
+    ::    We're done. Produce the empty tree and any dead packets we reaped.
+    ::
+    ::      If the root packet is dead:
+    ::
+    ::    Kill everything to its right, since all those packets have older
+    ::    deadlines than the root and will also be dead. Then recurse on
+    ::    the left node, since the top node might not have been the newest
+    ::    packet that needs to die.
+    ::
+    ::      If the root packet is alive:
+    ::
+    ::    Recurse to the right, which will look for older packets
+    ::    to be marked dead. Replace the right side of the :live tree with
+    ::    the modified tree resulting from the recursion.
+    ::
+    |-  ^+  [dead=dead live=live]
+    ?~  live  [dead ~]
+    ::  if packet at root of queue is dead, everything to its right is too
+    ::
+    ?:  (gte now expiration-date.n.live)
+      $(live l.live, dead (welp ~(tap to r.live) [n.live dead]))
+    ::  otherwise, replace right side of tree with recursion result
+    ::
+    =/  right-result  $(live r.live)
+    [dead.right-result live(r live.right-result)]
   ::  +abet: finalize core, reversing effects
   ::
   ++  abet  [(flop gifts) pump-state]
