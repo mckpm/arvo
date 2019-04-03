@@ -229,10 +229,41 @@
 +$  message-seq         @ud
 +$  fragment-num        @ud
 +$  fragment-index      [=message-seq =fragment-num]
-+$  packet-hash           @uvH
++$  packet-hash         @uvH
 +$  error               [tag=@tas =tang]
 +$  packet              [[to=ship from=ship] =encoding payload=@]
 +$  encoding            ?(%none %open %fast %full)
+::  +outbound-state: all data relevant to sending messages on a pipe
+::
+::    TODO docs when I actually understand this
+::    next-tick: next tick to fill
+::    till-tick: acked tick until
+::
++$  outbound-state
+  $:  next-tick=message-seq
+      till-tick=message-seq
+      live-messages=(map message-seq live-message)
+      =pump-state
+  ==
+::  +live-message: state of a partially sent message
+::
++$  live-message
+  $:  error=(unit error)
+      remote-route=path
+      total-fragments=fragment-num
+      acked-fragments=fragment-num
+      unsent-packets=(list packet-descriptor)
+  ==
+::  +pump-state: all data relevant to a per-ship |packet-pump
+::
+::    Note that while :live and :lost are structurally normal queues,
+::    we actually treat them as bespoke priority queues.
+::
++$  pump-state
+  $:  live=(qeu live-packet)
+      lost=(qeu packet-descriptor)
+      =pump-statistics
+  ==
 ::  +live-packet: data needed to track a packet in flight
 ::
 ::    Prepends :expiration-date and :sent-date to a +packet-descriptor.
@@ -252,16 +283,6 @@
       =packet-hash
       payload=@
   ==
-::  +pump-state: all data relevant to a per-ship |packet-pump
-::
-::    Note that while :live and :lost are structurally normal queues,
-::    we actually treat them as bespoke priority queues.
-::
-+$  pump-state
-  $:  live=(qeu live-packet)
-      lost=(qeu packet-descriptor)
-      =pump-statistics
-  ==
 ::  +pump-statistics: congestion control information
 ::
 ::    TODO: document
@@ -275,6 +296,9 @@
           last-sent=@da
           last-deadline=@da
   ==  ==
+::  +pipe-context: context for messaging between :our and :her
+::
++$  pipe-context  [our=ship =our=life crypto-core=acru:ames her=ship =pipe]
 ::  +meal: packet payload
 ::
 +$  meal
@@ -446,6 +470,83 @@
   ::
   ++  event-core  .
   --
+::  |message-manager: TODO docs
+::
+++  message-manager
+  =>  |%
+      +$  gift
+        $%  ::  %symmetric-key: new fast key for pipe
+            ::
+            [%symmetric-key (expiring =symmetric-key)]
+            ::  %mack: acknowledge a message
+            ::
+            [%mack =bone error=(unit error)]
+            ::  %send: release a packet
+            ::
+            [%send =packet-hash payload=@]
+        ==
+      ::
+      +$  task
+        $%  ::  %back: process raw packet acknowledgment
+            ::
+            [%back =packet-hash error=(unit error) lag=@dr]
+            ::  %mess: send a message
+            ::
+            [%mess remote-route=path message=*]
+            ::  %wake: handle an elapsed timer
+            ::
+            [%wake ~]
+        ==
+      --
+  |=  [pipe-context now=@da eny=@ =bone pump=_(pump) =outbound-state]
+  =|  gifts=(list gift)
+  ::
+  |%
+  +|  %entry-points
+  ++  abet  [gifts=(flop gifts) outbound-state=outbound-state]
+  ++  view
+    |%
+    ++  queue-count  ^-  @ud         ~(wyt by live-messages.outbound-state)
+    ++  next-wakeup  ^-  (unit @da)  next-wakeup:pump
+    --
+  ::  +work: handle +task request, producing mutant message-manager core
+  ::
+  ++  work
+    |=  =task
+    ^+  manager-core
+    ::
+    =<  manager-core
+    ::
+::    =<  =~  wy-work
+::            wy-abet
+::            +>
+::        ==
+    |%
+    ::  +wy-abet: resolve
+    ::
+    ++  wy-abet  +:wy-able
+    ++  wy-able  !!
+               ::  =~  wy-ably
+               ::      wy-feed
+               ::      wy-ably
+               ::      wy-tire
+               ::  ==
+    ++  wy-ably
+      ^+  work-core
+      ::
+      =^  gifts  pump-state.outbound-state  abet:pump
+      =.  pump  apex:pump
+      ::
+      !!
+    ++  wy-feed  !!
+    ++  wy-tire  !!
+    ++  wy-work  !!
+    ::
+    ++  work-core  .
+    --
+  +|  %utilities
+  ++  manager-core  .
+  --
 ::  |pump: packet pump state machine
 ::
 ++  pump
@@ -490,9 +591,7 @@
   ::
   ++  work
     |=  [now=@da =task]
-    ^+  [gifts pump-state]
     ::
-    =<  abet
     ^+  pump-core
     ::
     ?-  -.task
@@ -537,6 +636,12 @@
             ^=  last-sent        `@da`(sub now ~d1)
             ^=  last-deadline    `@da`(sub now ~d1)
     ==  ==
+  ::  +abet: finalize core, reversing effects
+  ::
+  ++  abet  [gifts=(flop gifts) pump-state=pump-state]
+  ::  +apex: flush effects (called before rerunning the pump)
+  ::
+  ++  apex  pump-core(gifts ~)
   ::  %utilities: helper arms
   ::
   +|  %utilities
@@ -817,9 +922,6 @@
     ::
     =/  right-result  $(live r.live)
     [dead.right-result live(r live.right-result)]
-  ::  +abet: finalize core, reversing effects
-  ::
-  ++  abet  [(flop gifts) pump-state]
   ::  +give: emit effect, prepended to :gifts to be reversed before emission
   ::
   ++  give  |=(=gift pump-core(gifts [gift gifts]))
@@ -843,7 +945,7 @@
       --
   ::  outer gate: establish pki context, producing inner gate
   ::
-  |=  [our=ship =our=life crypto-core=acru:ames her=ship =pipe]
+  |=  pipe-context
   ::  inner gate: process a meal, producing side effects and packets
   ::
   |=  [now=@da eny=@ =meal]

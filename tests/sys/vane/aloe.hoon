@@ -326,7 +326,7 @@
   =/  pump  (pump:aloe pump-state)
   ::  cull message 4
   ::
-  =/  result1=pump-state:aloe  +:(work:pump now.fix [%cull 4])
+  =/  result1=pump-state:aloe  +:abet:(work:pump now.fix [%cull 4])
   ::
   ;:  weld
     %+  expect-eq
@@ -375,7 +375,7 @@
     ==
   ::
   =/  result1=[gifts=(list gift:pump:aloe) =pump-state:aloe]
-    (work:pump now.fix [%pack packets])
+    abet:(work:pump now.fix [%pack packets])
   ::
   ;:  weld
     %+  expect-eq
