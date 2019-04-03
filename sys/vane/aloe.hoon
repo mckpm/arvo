@@ -515,32 +515,35 @@
     |=  =task
     ^+  manager-core
     ::
-    =<  manager-core
-    ::
-::    =<  =~  wy-work
-::            wy-abet
-::            +>
-::        ==
+    =<  =~  work-work
+            work-abet
+            manager-core
+        ==
     |%
-    ::  +wy-abet: resolve
+    ::  +work-abet: resolve
     ::
-    ++  wy-abet  +:wy-able
-    ++  wy-able  !!
-               ::  =~  wy-ably
-               ::      wy-feed
-               ::      wy-ably
-               ::      wy-tire
-               ::  ==
-    ++  wy-ably
+    ++  work-abet  work-core:work-able
+    ++  work-able  =~  work-ably
+                     work-feed
+                     work-ably
+                     work-tire
+                 ==
+    ++  work-ably
       ^+  work-core
       ::
       =^  gifts  pump-state.outbound-state  abet:pump
       =.  pump  apex:pump
       ::
       !!
-    ++  wy-feed  !!
-    ++  wy-tire  !!
-    ++  wy-work  !!
+    ++  work-feed
+      ^+  work-core
+      !!
+    ++  work-tire
+      ^+  work-core
+      !!
+    ++  work-work
+      ^+  work-core
+      !!
     ::
     ++  work-core  .
     --
