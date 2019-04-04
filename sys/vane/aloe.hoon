@@ -247,8 +247,13 @@
   ==
 ::  +live-message: state of a partially sent message
 ::
+::    :error is a double unit:
+::      ~           ::  we don't know whether the message succeeded or failed
+::      [~ ~]       ::  we know the message succeeded
+::      [~ ~ error] ::  we know the message failed
+::
 +$  live-message
-  $:  error=(unit error)
+  $:  error=(unit (unit error))
       remote-route=path
       total-fragments=fragment-num
       acked-fragments=fragment-num
@@ -515,7 +520,7 @@
     |=  =task
     ^+  manager-core
     ::
-    =<  =~  work-work
+    =<  =~  work-main
             work-abet
             manager-core
         ==
@@ -524,27 +529,90 @@
     ::
     ++  work-abet  work-core:work-able
     ++  work-able  =~  work-ably
-                     work-feed
-                     work-ably
-                     work-tire
-                 ==
+                       work-feed
+                       work-ably
+                       work-tire
+                   ==
     ++  work-ably
       ^+  work-core
       ::
       =^  gifts  pump-state.outbound-state  abet:pump
       =.  pump  apex:pump
       ::
-      !!
+      |-  ^+  work-core
+      ?~  gifts  work-core
+      =.  work-core  (work-abut i.gifts)
+      ::
+      $(gifts t.gifts)
+    ::
+    ++  work-abut
+      |=  =gift:pump
+      ^+  work-core
+      ::
+      ?-  -.gift
+        %good  (work-good [fragment-index error]:gift)
+        %send  (work-give [%send packet-hash payload]:gift)
+      ==
+    ::
     ++  work-feed
       ^+  work-core
       !!
+    ::  +work-good: apply packet ack, possibly acking or nacking whole message
+    ::
+    ++  work-good
+      |=  [=fragment-index error=(unit error)]
+      ^+  work-core
+      ::
+      =/  message=(unit live-message)
+        (~(get by live-messages.outbound-state) message-seq.fragment-index)
+      ::  if we're already done with :message, no-op
+      ::
+      ?~  message                   work-core
+      ?~  unsent-packets.u.message  work-core
+      ::  if packet says message failed, save this nack and clear the message
+      ::
+      ?^  error
+        =/  =message-seq  message-seq.fragment-index
+        ~&  [%work-good-fail message-seq]
+        ::  remove this message's packets from our packet pump queues
+        ::
+        =.  pump  (work:pump now %cull message-seq)
+        ::  finalize the message in :outbound-state, saving error
+        ::
+        =.  live-messages.outbound-state
+          %+  ~(put by live-messages.outbound-state)  message-seq
+          u.message(unsent-packets ~, error `error)
+        ::
+        work-core
+      ::  sanity check: make sure we haven't acked more packets than exist
+      ::
+      ?>  (lth [acked-fragments total-fragments]:u.message)
+      ::  apply the ack on this packet to our ack counter for this message
+      ::
+      =.  acked-fragments.u.message  +(acked-fragments.u.message)
+      ::  if final packet, we know no error ([~ ~]); otherwise, unknown (~)
+      ::
+      =.  error.u.message
+        ?:  =(acked-fragments total-fragments):u.message
+          [~ ~]
+        ~
+      ::  update :live-messages with modified :message
+      ::
+      =.  live-messages.outbound-state
+        %+  ~(put by live-messages.outbound-state)
+          message-seq.fragment-index
+        u.message
+      ::
+      work-core
+    ::
     ++  work-tire
       ^+  work-core
       !!
-    ++  work-work
+    ++  work-main
       ^+  work-core
       !!
     ::
+    ++  work-give  |=(=gift work-core(gifts [gift gifts]))
     ++  work-core  .
     --
   +|  %utilities
@@ -641,7 +709,7 @@
     ==  ==
   ::  +abet: finalize core, reversing effects
   ::
-  ++  abet  [gifts=(flop gifts) pump-state=pump-state]
+  ++  abet  [(flop gifts) pump-state]
   ::  +apex: flush effects (called before rerunning the pump)
   ::
   ++  apex  pump-core(gifts ~)
