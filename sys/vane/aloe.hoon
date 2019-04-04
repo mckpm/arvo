@@ -525,6 +525,14 @@
             manager-core
         ==
     |%
+    ++  work-main
+      ^+  work-core
+      ::
+      ?-  -.task
+        %back  (work-back [packet-hash error lag]:task)
+        %mess  (work-mess [remote-route message]:task)
+        %wake  work-wake
+      ==
     ::  +work-abet: resolve
     ::
     ++  work-abet  work-core:work-able
@@ -554,6 +562,13 @@
         %good  (work-good [fragment-index error]:gift)
         %send  (work-give [%send packet-hash payload]:gift)
       ==
+    ::
+    ++  work-back
+      |=  [=packet-hash error=(unit error) lag=@dr]
+      ^+  work-core
+      ::
+      =.  pump  (work:pump now %back packet-hash error lag)
+      work-core
     ::
     ++  work-feed
       ^+  work-core
@@ -648,12 +663,21 @@
       ::
       work-core
     ::
+    ++  work-mess
+      |=  [remote-route=path message=*]
+      ^+  work-core
+      ::
+      !!
+    ::
     ++  work-tire
       ^+  work-core
       !!
-    ++  work-main
+    ::
+    ++  work-wake
       ^+  work-core
-      !!
+      ::
+      =.  pump  (work:pump now %wake ~)
+      work-core
     ::
     ++  work-give  |=(=gift work-core(gifts [gift gifts]))
     ++  work-core  .
