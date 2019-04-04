@@ -521,215 +521,202 @@
     |=  =task
     ^+  manager-core
     ::
-    =<  =~  work-main
-            work-abet
-            manager-core
+    =<  =~  ably  feed
+            ably  tire
         ==
-    |%
-    ++  work-main
-      ^+  work-core
-      ::
-      ?-  -.task
-        %back  (work-back [packet-hash error lag]:task)
-        %mess  (work-mess [remote-route message]:task)
-        %wake  work-wake
-      ==
-    ::  +work-abet: resolve
     ::
-    ++  work-abet  work-core:work-able
-    ++  work-able  =~  work-ably
-                       work-feed
-                       work-ably
-                       work-tire
-                   ==
-    ++  work-ably
-      ^+  work-core
-      ::
-      =^  gifts  pump-state.outbound-state  abet:pump
-      =.  pump  apex:pump
-      ::
-      |-  ^+  work-core
-      ?~  gifts  work-core
-      =.  work-core  (work-abut i.gifts)
-      ::
-      $(gifts t.gifts)
-    ::  +work-abut: process packet pump effect
+    ?-  -.task
+      %back  (back [packet-hash error lag]:task)
+      %mess  (mess [remote-route message]:task)
+      %wake  wake
+    ==
+  ::
+  ++  ably
+    ^+  manager-core
     ::
-    ++  work-abut
-      |=  =gift:pump
-      ^+  work-core
-      ::
-      ?-  -.gift
-        %good  (work-good [fragment-index error]:gift)
-        %send  (work-give [%send packet-hash payload]:gift)
-      ==
-    ::  +work-back: hear an ack; pass it to the pump
+    =^  gifts  pump-state.outbound-state  abet:pump
+    =.  pump  apex:pump
     ::
-    ++  work-back
-      |=  [=packet-hash error=(unit error) lag=@dr]
-      ^+  work-core
-      ::
-      =.  pump  (work:pump now %back packet-hash error lag)
-      work-core
-    ::  +work-feed: feed the pump with as many packets as it can accept
+    |-  ^+  manager-core
+    ?~  gifts  manager-core
+    =.  manager-core  (abut i.gifts)
     ::
-    ++  work-feed
-      ^+  work-core
-      ::
-      =^  packets  work-core  (work-find window-slots.pump)
-      =.  pump  (work:pump now [%pack packets])
-      ::
-      work-core
-    ::  +work-find: collect packets to be fed to the pump
+    $(gifts t.gifts)
+  ::  +abut: process packet pump effect
+  ::
+  ++  abut
+    |=  =gift:pump
+    ^+  manager-core
     ::
-    ++  work-find
-      =|  packets=(list packet-descriptor)
-      =/  index  till-tick.outbound-state
-      ::
-      |=  window-slots=@ud
-      ^+  [packets work-core]
-      ::
-      =-  [(flop -<) ->]
-      ::
-      ?:  =(0 window-slots)                  [packets work-core]
-      ?:  =(index next-tick.outbound-state)  [packets work-core]
-      ::
-      =^  flowed=[slots=@ud packets=(list packet-descriptor)]  work-core
-        (work-flow index window-slots packets)
-      ::
-      $(index +(index), window-slots slots.flowed, packets packets.flowed)
-    ::  +work-flow: "collect by message", TODO wtf
+    ?-  -.gift
+      %good  (good [fragment-index error]:gift)
+      %send  (give [%send packet-hash payload]:gift)
+    ==
+  ::  +back: hear an ack; pass it to the pump
+  ::
+  ++  back
+    |=  [=packet-hash error=(unit error) lag=@dr]
+    ^+  manager-core
     ::
-    ++  work-flow
-      |=  [index=@ud window-slots=@ud packets=(list packet-descriptor)]
-      ^+  [[window-slots packets] work-core]
-      ::
-      =/  message=live-message  (~(got by live-messages.outbound-state) index)
-      ::
-      |-  ^+  [[window-slots packets] work-core]
-      ::  TODO document this condition
-      ::
-      ?:  |(=(0 window-slots) ?=(~ unsent-packets.message))
-        =.  live-messages.outbound-state
-          (~(put by live-messages.outbound-state) index message)
-        [[window-slots packets] work-core]
-      ::
-      %_  $
-        window-slots            (dec window-slots)
-        packets                 [i.unsent-packets.message packets]
-        unsent-packets.message  t.unsent-packets.message
-      ==
-    ::  +work-good: apply packet ack, possibly acking or nacking whole message
+    =.  pump  (work:pump now %back packet-hash error lag)
+    manager-core
+  ::  +feed: feed the pump with as many packets as it can accept
+  ::
+  ++  feed
+    ^+  manager-core
     ::
-    ++  work-good
-      |=  [=fragment-index error=(unit error)]
-      ^+  work-core
+    =^  packets  manager-core  (find window-slots.pump)
+    =.  pump  (work:pump now [%pack packets])
+    ::
+    manager-core
+  ::  +find: collect packets to be fed to the pump
+  ::
+  ++  find
+    =|  packets=(list packet-descriptor)
+    =/  index  till-tick.outbound-state
+    ::
+    |=  window-slots=@ud
+    ^+  [packets manager-core]
+    ::
+    =-  [(flop -<) ->]
+    ::
+    ?:  =(0 window-slots)                  [packets manager-core]
+    ?:  =(index next-tick.outbound-state)  [packets manager-core]
+    ::
+    =^  flowed=[slots=@ud packets=(list packet-descriptor)]  manager-core
+      (flow index window-slots packets)
+    ::
+    $(index +(index), window-slots slots.flowed, packets packets.flowed)
+  ::  +flow: "collect by message", TODO wtf
+  ::
+  ++  flow
+    |=  [index=@ud window-slots=@ud packets=(list packet-descriptor)]
+    ^+  [[window-slots packets] manager-core]
+    ::
+    =/  message=live-message  (~(got by live-messages.outbound-state) index)
+    ::
+    |-  ^+  [[window-slots packets] manager-core]
+    ::  TODO document this condition
+    ::
+    ?:  |(=(0 window-slots) ?=(~ unsent-packets.message))
+      =.  live-messages.outbound-state
+        (~(put by live-messages.outbound-state) index message)
+      [[window-slots packets] manager-core]
+    ::
+    %_  $
+      window-slots            (dec window-slots)
+      packets                 [i.unsent-packets.message packets]
+      unsent-packets.message  t.unsent-packets.message
+    ==
+  ::  +good: apply packet ack, possibly acking or nacking whole message
+  ::
+  ++  good
+    |=  [=fragment-index error=(unit error)]
+    ^+  manager-core
+    ::
+    =/  message=(unit live-message)
+      (~(get by live-messages.outbound-state) message-seq.fragment-index)
+    ::  if we're already done with :message, no-op
+    ::
+    ?~  message                   manager-core
+    ?~  unsent-packets.u.message  manager-core
+    ::  if packet says message failed, save this nack and clear the message
+    ::
+    ?^  error
+      =/  =message-seq  message-seq.fragment-index
+      ~&  [%good-fail message-seq]
+      ::  remove this message's packets from our packet pump queues
       ::
-      =/  message=(unit live-message)
-        (~(get by live-messages.outbound-state) message-seq.fragment-index)
-      ::  if we're already done with :message, no-op
-      ::
-      ?~  message                   work-core
-      ?~  unsent-packets.u.message  work-core
-      ::  if packet says message failed, save this nack and clear the message
-      ::
-      ?^  error
-        =/  =message-seq  message-seq.fragment-index
-        ~&  [%work-good-fail message-seq]
-        ::  remove this message's packets from our packet pump queues
-        ::
-        =.  pump  (work:pump now %cull message-seq)
-        ::  finalize the message in :outbound-state, saving error
-        ::
-        =.  live-messages.outbound-state
-          %+  ~(put by live-messages.outbound-state)  message-seq
-          u.message(unsent-packets ~, error `error)
-        ::
-        work-core
-      ::  sanity check: make sure we haven't acked more packets than exist
-      ::
-      ?>  (lth [acked-fragments total-fragments]:u.message)
-      ::  apply the ack on this packet to our ack counter for this message
-      ::
-      =.  acked-fragments.u.message  +(acked-fragments.u.message)
-      ::  if final packet, we know no error ([~ ~]); otherwise, unknown (~)
-      ::
-      =.  error.u.message
-        ?:  =(acked-fragments total-fragments):u.message
-          [~ ~]
-        ~
-      ::  update :live-messages with modified :message
+      =.  pump  (work:pump now %cull message-seq)
+      ::  finalize the message in :outbound-state, saving error
       ::
       =.  live-messages.outbound-state
-        %+  ~(put by live-messages.outbound-state)
-          message-seq.fragment-index
-        u.message
+        %+  ~(put by live-messages.outbound-state)  message-seq
+        u.message(unsent-packets ~, error `error)
       ::
-      work-core
-    ::  +work-mess: break a message into packets, marking them as unsent
+      manager-core
+    ::  sanity check: make sure we haven't acked more packets than exist
     ::
-    ++  work-mess
-      |=  [remote-route=path message=*]
-      ^+  work-core
-      ::  encode the message as packets, flipping bone parity
+    ?>  (lth [acked-fragments total-fragments]:u.message)
+    ::  apply the ack on this packet to our ack counter for this message
+    ::
+    =.  acked-fragments.u.message  +(acked-fragments.u.message)
+    ::  if final packet, we know no error ([~ ~]); otherwise, unknown (~)
+    ::
+    =.  error.u.message
+      ?:  =(acked-fragments total-fragments):u.message
+        [~ ~]
+      ~
+    ::  update :live-messages with modified :message
+    ::
+    =.  live-messages.outbound-state
+      %+  ~(put by live-messages.outbound-state)
+        message-seq.fragment-index
+      u.message
+    ::
+    manager-core
+  ::  +mess: break a message into packets, marking them as unsent
+  ::
+  ++  mess
+    |=  [remote-route=path message=*]
+    ^+  manager-core
+    ::  encode the message as packets, flipping bone parity
+    ::
+    =+  ^-  [meal-gifts=(list gift:encode-meal) fragments=(list @)]
+        ::
+        %-  (encode-meal pipe-context)
+        :+  now  eny
+        [%bond [(mix bone 1) next-tick.outbound-state] remote-route message]
+    ::
+    =.  gifts  (weld (flop meal-gifts) gifts)
+    ::
+    %_    manager-core
+        next-tick.outbound-state  +(next-tick.outbound-state)
+    ::
+        live-messages.outbound-state
+      %+  ~(put by live-messages.outbound-state)  next-tick.outbound-state
+      ^-  live-message
       ::
-      =+  ^-  [meal-gifts=(list gift:encode-meal) fragments=(list @)]
+      :*  error=~
+          remote-route
+          total-fragments=(lent fragments)
+          acked-fragments=0
           ::
-          %-  (encode-meal pipe-context)
-          :+  now  eny
-          [%bond [(mix bone 1) next-tick.outbound-state] remote-route message]
-      ::
-      =.  gifts  (weld (flop meal-gifts) gifts)
-      ::
-      %_    work-core
-          next-tick.outbound-state  +(next-tick.outbound-state)
-      ::
-          live-messages.outbound-state
-        %+  ~(put by live-messages.outbound-state)  next-tick.outbound-state
-        ^-  live-message
-        ::
-        :*  error=~
-            remote-route
-            total-fragments=(lent fragments)
-            acked-fragments=0
-            ::
-            ^=  unsent-packets  ^-  (list packet-descriptor)
-            =/  index  0
-            |-  ^-  (list packet-descriptor)
-            ?~  fragments  ~
-            ::
-            :-  ^-  packet-descriptor
-                ::
-                :^    virgin=&
-                    [index next-tick.outbound-state]
-                  (shaf %flap i.fragments)
-                i.fragments
-            ::
-            $(fragments t.fragments, index +(index))
-        ==
+          ^=  unsent-packets  ^-  (list packet-descriptor)
+          =/  index  0
+          |-  ^-  (list packet-descriptor)
+          ?~  fragments  ~
+          ::
+          :-  ^-  packet-descriptor
+              ::
+              :^    virgin=&
+                  [index next-tick.outbound-state]
+                (shaf %flap i.fragments)
+              i.fragments
+          ::
+          $(fragments t.fragments, index +(index))
       ==
+    ==
+  ::
+  ++  tire
+    |-  ^+  manager-core
+    =/  zup  (~(get by live-messages.outbound-state) till-tick.outbound-state)
+    ?~  zup          manager-core
+    ?~  error.u.zup  manager-core
     ::
-    ++  work-tire
-      |-  ^+  work-core
-      =/  zup  (~(get by live-messages.outbound-state) till-tick.outbound-state)
-      ?~  zup          work-core
-      ?~  error.u.zup  work-core
-      ::
-      =.  work-core  (work-give [%mack bone `(unit error)`u.error.u.zup])
-      =.  live-messages.outbound-state
-        (~(del by live-messages.outbound-state) till-tick.outbound-state)
-      ::
-      $(till-tick.outbound-state +(till-tick.outbound-state))
+    =.  manager-core  (give [%mack bone `(unit error)`u.error.u.zup])
+    =.  live-messages.outbound-state
+      (~(del by live-messages.outbound-state) till-tick.outbound-state)
     ::
-    ++  work-wake
-      ^+  work-core
-      ::
-      =.  pump  (work:pump now %wake ~)
-      work-core
+    $(till-tick.outbound-state +(till-tick.outbound-state))
+  ::
+  ++  wake
+    ^+  manager-core
     ::
-    ++  work-give  |=(=gift work-core(gifts [gift gifts]))
-    ++  work-core  .
-    --
+    =.  pump  (work:pump now %wake ~)
+    manager-core
+  ::
+  ++  give  |=(=gift manager-core(gifts [gift gifts]))
   --
 ::  |pump: packet pump state machine
 ::
