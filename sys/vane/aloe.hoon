@@ -544,6 +544,7 @@
       =.  work-core  (work-abut i.gifts)
       ::
       $(gifts t.gifts)
+    ::  +work-abut: process packet pump effect
     ::
     ++  work-abut
       |=  =gift:pump
@@ -556,7 +557,49 @@
     ::
     ++  work-feed
       ^+  work-core
-      !!
+      ::
+      =^  packets  work-core  (work-find window-slots.pump)
+      =.  pump  (work:pump now [%pack packets])
+      ::
+      work-core
+    ::
+    ++  work-find
+      =|  packets=(list packet-descriptor)
+      =/  index  till-tick.outbound-state
+      ::
+      |=  window-slots=@ud
+      ^+  [packets work-core]
+      ::
+      =-  [(flop -<) ->]
+      ::
+      ?:  =(0 window-slots)                  [packets work-core]
+      ?:  =(index next-tick.outbound-state)  [packets work-core]
+      ::
+      =^  flowed=[slots=@ud packets=(list packet-descriptor)]  work-core
+        (work-flow index window-slots packets)
+      ::
+      $(index +(index), window-slots slots.flowed, packets packets.flowed)
+    ::  +work-flow: "collect by message", TODO wtf
+    ::
+    ++  work-flow
+      |=  [index=@ud window-slots=@ud packets=(list packet-descriptor)]
+      ^+  [[window-slots packets] work-core]
+      ::
+      =/  message=live-message  (~(got by live-messages.outbound-state) index)
+      ::
+      |-  ^+  [[window-slots packets] work-core]
+      ::  TODO document this condition
+      ::
+      ?:  |(=(0 window-slots) ?=(~ unsent-packets.message))
+        =.  live-messages.outbound-state
+          (~(put by live-messages.outbound-state) index message)
+        [[window-slots packets] work-core]
+      ::
+      %_  $
+        window-slots            (dec window-slots)
+        packets                 [i.unsent-packets.message packets]
+        unsent-packets.message  t.unsent-packets.message
+      ==
     ::  +work-good: apply packet ack, possibly acking or nacking whole message
     ::
     ++  work-good
