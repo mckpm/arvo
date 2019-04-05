@@ -521,57 +521,68 @@
     |=  =task
     ^+  manager-core
     ::
-    =<  =~  ably  feed
-            ably  tire
-        ==
-    ::
-    ?-  -.task
-      %back  (back [packet-hash error lag]:task)
-      %mess  (mess [remote-route message]:task)
-      %wake  wake
+    =~  (handle-task task)
+        drain-pump-gifts
+        ::
+        feed-packets-to-pump
+        drain-pump-gifts
+        ::
+        ack-completed-messages
     ==
+  ::  +handle-task: process an incoming request
   ::
-  ++  ably
+  ++  handle-task
+    |=  =task
     ^+  manager-core
     ::
-    =^  gifts  pump-state.outbound-state  abet:pump
+    ?-  -.task
+      %back  (handle-packet-ack [packet-hash error lag]:task)
+      %mess  (handle-message-request [remote-route message]:task)
+      %wake  wake
+    ==
+  ::  +drain-pump-gifts: extract and apply pump effects, clearing pump
+  ::
+  ++  drain-pump-gifts
+    ^+  manager-core
+    ::
+    =^  pump-gifts  pump-state.outbound-state  abet:pump
     =.  pump  apex:pump
     ::
     |-  ^+  manager-core
-    ?~  gifts  manager-core
-    =.  manager-core  (abut i.gifts)
+    ?~  pump-gifts  manager-core
+    =.  manager-core  (handle-pump-gift i.pump-gifts)
     ::
-    $(gifts t.gifts)
-  ::  +abut: process packet pump effect
+    $(pump-gifts t.pump-gifts)
+  ::  +handle-pump-gift: process a single effect from the packet pump
   ::
-  ++  abut
+  ++  handle-pump-gift
     |=  =gift:pump
     ^+  manager-core
     ::
     ?-  -.gift
-      %good  (good [fragment-index error]:gift)
+      %good  (apply-packet-ack [fragment-index error]:gift)
       %send  (give [%send packet-hash payload]:gift)
     ==
-  ::  +back: hear an ack; pass it to the pump
+  ::  +handle-packet-ack: hear an ack; pass it to the pump
   ::
-  ++  back
+  ++  handle-packet-ack
     |=  [=packet-hash error=(unit error) lag=@dr]
     ^+  manager-core
     ::
     =.  pump  (work:pump now %back packet-hash error lag)
     manager-core
-  ::  +feed: feed the pump with as many packets as it can accept
+  ::  +feed-packets-to-pump: feed the pump with as many packets as it can accept
   ::
-  ++  feed
+  ++  feed-packets-to-pump
     ^+  manager-core
     ::
-    =^  packets  manager-core  (find window-slots.pump)
+    =^  packets  manager-core  (collect-packets window-slots.pump)
     =.  pump  (work:pump now [%pack packets])
     ::
     manager-core
-  ::  +find: collect packets to be fed to the pump
+  ::  +collect-packets: collect packets to be fed to the pump
   ::
-  ++  find
+  ++  collect-packets
     =|  packets=(list packet-descriptor)
     =/  index  till-tick.outbound-state
     ::
@@ -583,13 +594,18 @@
     ?:  =(0 window-slots)                  [packets manager-core]
     ?:  =(index next-tick.outbound-state)  [packets manager-core]
     ::
-    =^  flowed=[slots=@ud packets=(list packet-descriptor)]  manager-core
-      (flow index window-slots packets)
+    =^    popped=[remaining-slots=@ud packets=(list packet-descriptor)]
+        manager-core
+      (pop-unsent-packets index window-slots packets)
     ::
-    $(index +(index), window-slots slots.flowed, packets packets.flowed)
-  ::  +flow: "collect by message", TODO wtf
+    %_  $
+      index         +(index)
+      window-slots  remaining-slots.popped
+      packets       packets.popped
+    ==
+  ::  +pop-unsent-packets: unqueue up to :window-slots unsent packets to pump
   ::
-  ++  flow
+  ++  pop-unsent-packets
     |=  [index=@ud window-slots=@ud packets=(list packet-descriptor)]
     ^+  [[window-slots packets] manager-core]
     ::
@@ -608,9 +624,9 @@
       packets                 [i.unsent-packets.message packets]
       unsent-packets.message  t.unsent-packets.message
     ==
-  ::  +good: apply packet ack, possibly acking or nacking whole message
+  ::  +apply-packet-ack: possibly acks or nacks whole message
   ::
-  ++  good
+  ++  apply-packet-ack
     |=  [=fragment-index error=(unit error)]
     ^+  manager-core
     ::
@@ -624,7 +640,7 @@
     ::
     ?^  error
       =/  =message-seq  message-seq.fragment-index
-      ~&  [%good-fail message-seq]
+      ~&  [%apply-packet-ack-fail message-seq]
       ::  remove this message's packets from our packet pump queues
       ::
       =.  pump  (work:pump now %cull message-seq)
@@ -655,9 +671,9 @@
       u.message
     ::
     manager-core
-  ::  +mess: break a message into packets, marking them as unsent
+  ::  +handle-message-request: break a message into packets, marking as unsent
   ::
-  ++  mess
+  ++  handle-message-request
     |=  [remote-route=path message=*]
     ^+  manager-core
     ::  encode the message as packets, flipping bone parity
@@ -667,12 +683,15 @@
         %-  (encode-meal pipe-context)
         :+  now  eny
         [%bond [(mix bone 1) next-tick.outbound-state] remote-route message]
+    ::  apply :meal-gifts
     ::
     =.  gifts  (weld (flop meal-gifts) gifts)
     ::
     %_    manager-core
         next-tick.outbound-state  +(next-tick.outbound-state)
     ::
+        ::  create packet data structures from fragments; store in state
+        ::
         live-messages.outbound-state
       %+  ~(put by live-messages.outbound-state)  next-tick.outbound-state
       ^-  live-message
@@ -697,8 +716,9 @@
           $(fragments t.fragments, index +(index))
       ==
     ==
+  ::  +ack-completed-messages: ack messages, then clear them from state
   ::
-  ++  tire
+  ++  ack-completed-messages
     |-  ^+  manager-core
     =/  zup  (~(get by live-messages.outbound-state) till-tick.outbound-state)
     ?~  zup          manager-core
