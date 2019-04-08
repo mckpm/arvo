@@ -225,7 +225,7 @@
       ==                                                ::
     ++  sign                                            ::  in result _<-
       $%  $:  $b                                        ::  to %behn
-      $%  {$wake ~}                                     ::  timer activate
+      $%  {$wake error=(unit tang)}                     ::  timer activate
       ==  ==                                            ::
           $:  %j                                        ::  from %jael
       $%  [%pubs public:able:jael]                      ::  public keys
@@ -1848,7 +1848,7 @@
     +$  seed  [who=ship lyf=life key=ring sig=(unit oath:pki)]
     ::
     ++  sign                                            ::  in result $<-
-      $%  {$b $wake ~}                                  ::  wakeup
+      $%  {$b $wake error=(unit tang)}                  ::  wakeup
           [%e %sigh p=cage]                             ::  marked http response
           [%j %vent p=vent-result]                      ::  ethereum changes
           [%a %woot p=ship q=coop]                      ::  message result
