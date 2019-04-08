@@ -362,7 +362,7 @@
   =/  pump  (pump:aloe pump-state)
   ::
   =/  packets=(list packet-descriptor:aloe)
-    %+  turn  (gulf 1 7)
+    %+  turn  (gulf 1 2)
     |=  n=@
     ^-  packet-descriptor:aloe
     ::

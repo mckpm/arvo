@@ -898,6 +898,8 @@
   ::    Clears all packets from a message from the :live and :lost queues.
   ::
   ::    TODO test
+  ::    TODO: shouldn't this adjust the accounting in :pump-statistics?
+  ::          specifically, :retry-length and :window-length
   ::
   ++  cull
     |=  =message-seq
@@ -1038,34 +1040,34 @@
         retry-length.pump-statistics.pump-state
       +(retry-length.pump-statistics.pump-state)
     ==
-  ::  +send-packets: send packets until window closes; sends from backlog first
+  ::  +send-packets: resends lost packets then sends new until window closes
   ::
   ++  send-packets
     |=  [now=@da packets=(list packet-descriptor)]
     ^+  pump-core
-    ::  if our outgoing queue is full, no-op, dropping new packets
+    ::  make sure we weren't asked to send more packets than allowed
     ::
-    ::    TODO: is it ok to just drop the supplied packets without enqueueing
-    ::    them somewhere?
+    ?>  (lte (lent packets) window-slots)
+    ::  first, resend as many lost packets from our backlog as possible
     ::
-    ?:  (gte [window-length max-packets-out]:pump-statistics.pump-state)
-      pump-core
-    ::  if no packets to retry, start sending new packets
+    =>  |-  ^+  .
+        ?:  =(~ lost.pump-state)  .
+        ::  send a lost packet from our backlog
+        ::
+        =^  lost-packet  lost.pump-state  ~(get to lost.pump-state)
+        ::
+        =.  retry-length.pump-statistics.pump-state
+          (dec retry-length.pump-statistics.pump-state)
+        ::
+        =.  pump-core  (fire-packet now lost-packet)
+        $
+    ::  now that we've finished the backlog, send the requested packets
     ::
-    ?:  =(0 retry-length.pump-statistics.pump-state)
-      ?~  packets
-        pump-core
-      ::
-      =.  pump-core  (fire-packet now i.packets)
-      $(packets t.packets)
-    ::  send a lost packet from our backlog
+    |-  ^+  pump-core
+    ?~  packets  pump-core
     ::
-    =^  lost-packet  lost.pump-state  ~(get to lost.pump-state)
-    =.  retry-length.pump-statistics.pump-state
-      (dec retry-length.pump-statistics.pump-state)
-    ::
-    =.  pump-core  (fire-packet now lost-packet)
-    $
+    =.  pump-core  (fire-packet now i.packets)
+    $(packets t.packets)
   ::  +wake: handle elapsed timer
   ::
   ++  wake
