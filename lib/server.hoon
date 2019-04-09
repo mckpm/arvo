@@ -59,6 +59,11 @@
     ^-  http-event:http
     [%start [200 ['content-type' 'text/css']~] [~ oct-css] %.y]
   ::
+  ++  png-response
+    |=  oct-png=octs
+    ^-  http-event:http
+    [%start [200 ['content-type' 'image/png']~] [~ oct-png] %.y]
+  ::
   ++  not-found
     ^-  http-event:http
     [%start [404 ~] ~ %.y]
@@ -99,6 +104,11 @@
     |=  =octs
     ^-  simple-payload:http
     [[200 ['content-type' 'text/css']~] `octs]
+  ::
+  ++  png-response
+    |=  =octs
+    ^-  simple-payload:http
+    [[200 ['content-type' 'image/png']~] `octs]
   ::
   ++  not-found
     ^-  simple-payload:http
