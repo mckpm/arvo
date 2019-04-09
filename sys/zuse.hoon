@@ -69,7 +69,8 @@
     ==
 ::
 ++  coop  (unit ares)                                   ::  possible error
-++  life  @ud                                           ::  ship version
+++  life  @ud                                           ::  ship key revision
+++  rift  @ud                                           ::  ship continuity
 ++  mime  {p/mite q/octs}                               ::  mimetyped data
 ++  octs  {p/@ud q/@t}                                  ::  octet-stream
 ++  sock  {p/ship q/ship}                               ::  outgoing [our his]
@@ -252,7 +253,7 @@
           [%init p=ship]                                ::  report install
           {$kick p/@da}                                 ::  wake up
           {$nuke p/@p}                                  ::  toggle auto-block
-          {$sunk p=ship q=life}                         ::  report death
+          {$sunk p=ship q=rift}                         ::  report death
           {$vega ~}                                     ::  report upgrade
           {$wake ~}                                     ::  timer activate
           {$wegh ~}                                     ::  report memory
@@ -487,7 +488,7 @@
           {$dirk des/desk}                              ::  mark mount dirty
           {$ogre pot/$@(desk beam)}                     ::  delete mount point
           {$perm des/desk pax/path rit/rite}            ::  change permissions
-          {$sunk p=ship q=life}                         ::  report death
+          {$sunk p=ship q=rift}                         ::  report death
           {$vega ~}                                     ::  report upgrade
           {$warp wer/ship rif/riff}                     ::  internal file req
           {$werp who/ship wer/ship rif/riff}            ::  external file req
@@ -652,8 +653,8 @@
           {$harm ~}                                     ::  all terms hung up
           {$init p/ship}                                ::  after gall ready
           {$lyra p/@t q/@t}                             ::  upgrade kernel
-          {$noop ~}                                     ::  no operation
-          {$sunk p=ship q=life}                         ::  report death
+          {$noop ~}                                    ::  no operation
+          {$sunk p=ship q=rift}                         ::  report death
           {$talk p/tank}                                ::
           {$text p/tape}                                ::
           {$veer p/@ta q/path r/@t}                     ::  install vane
@@ -750,7 +751,7 @@
           [%live p=@ud q=(unit @ud)]                    ::  http/s ports
           [%rule p=http-rule]                           ::  update config
           [%serv p=$@(desk beam)]                       ::  set serving root
-          [%sunk p=ship q=life]                         ::  report death
+          [%sunk p=ship q=rift]                         ::  report death
           [%them p=(unit hiss)]                         ::  outbound request
           [%they p=@ud q=httr]                          ::  inbound response
           [%chis p=? q=clip r=httq]                     ::  IPC inbound request
@@ -992,7 +993,7 @@
           [%kill ~]
           ::  %sunk: receive a report that a foreign ship has lost continuity
           ::
-          [%sunk =ship =life]
+          [%sunk =ship =rift]
           ::  %vega: report kernel upgrade
           ::
           [%vega ~]
@@ -1686,7 +1687,7 @@
       $%  {$conf p/dock q/culm}                         ::  configure app
           {$init p/ship}                                ::  set owner
           {$deal p/sock q/cush}                         ::  full transmission
-          {$sunk p=ship q/life}                         ::  report death
+          {$sunk p=ship q/rift}                         ::  report death
           {$vega ~}                                     ::  report upgrade
           {$west p/ship q/path r/*}                     ::  network request
           {$wegh ~}                                     ::  report memory
@@ -1834,7 +1835,7 @@
       ==  ==                                            ::
           $:  @tas                                      ::
       $%  [%init p=ship]                                ::  report install
-          [%sunk p=ship q=life]                         ::  report death
+          [%sunk p=ship q=rift]                         ::  report death
       ==  ==  ==                                        ::
     ++  public                                          ::  public key state
       $:  life=life                                     ::  current key number
@@ -7198,12 +7199,14 @@
         |%
         ::  azimuth: data contract
         ::
-        ::  ++  azimuth  0x308a.b6a6.024c.f198.b57e.008d.0ac9.ad02.1988.6579  ::  ropsten
         ++  azimuth  0x223c.067f.8cf2.8ae1.73ee.5caf.ea60.ca44.c335.fecb  ::  mainnet
+        ::  ++  azimuth  0x308a.b6a6.024c.f198.b57e.008d.0ac9.ad02.1988.6579  ::  ropsten
+        ::  ++  azimuth  0x863d.9c2e.5c4c.1335.96cf.ac29.d552.55f0.d0f8.6381  ::  local bridge
         ::
         ::  launch: block number of azimuth deploy
         ::
-        ++  launch  6.784.800
+        ++  launch  6.784.800  ::  mainnet
+        ::  ++  launch  0  ::  local bridge
         --
       ::
       ::  hashes of ship event signatures
@@ -7713,6 +7716,7 @@
         ::  enc(X) is the sequence of bytes in X padded with zero-bytes to a
         ::  length of 32.
         ::  Note that for any X, len(enc(X)) is a multiple of 32.
+        ~|  [%bytes-n-too-long max=32 actual=p.p.dat]
         ?>  (lte p.p.dat 32)
         (pad-to-multiple (render-hex-bytes p.dat) 64 %right)
       ::
@@ -7722,7 +7726,7 @@
         ::  by the minimum number of zero-bytes such that len(enc(X)) is a
         ::  multiple of 32.
         %+  weld  $(dat [%uint p.p.dat])
-        $(dat [%bytes-n p.dat])
+        (pad-to-multiple (render-hex-bytes p.dat) 64 %right)
       ::
           %string
         ::  enc(X) = enc(enc_utf8(X)), i.e. X is utf-8 encoded and this value is
@@ -7754,24 +7758,19 @@
     ::
     ::  decoding
     ::
-    ++  decode-topics
-      ::  tox:  list of hex words
-      |*  [tox=(lest @ux) tys=(list etyp)]
-      =-  (decode-arguments (crip -) tys)
-      %+  render-hex-bytes  (mul 32 (lent tox))
-      %+  roll  `(list @ux)`tox
-      |=  [top=@ux tos=@]
-      (cat 8 top tos)
+    ++  decode-topics  decode-arguments
     ::
     ++  decode-results
       ::  rex:  string of hex bytes with leading 0x.
       |*  [rex=@t tys=(list etyp)]
-      (decode-arguments (rsh 3 2 rex) tys)
+      =-  (decode-arguments - tys)
+      %+  turn  (rip 9 (rsh 3 2 rex))
+      (curr rash hex)
     ::
     ++  decode-arguments
-      |*  [res=@t tys=(list etyp)]
+      |*  [wos=(list @) tys=(list etyp)]
+      =/  wos=(list @)  wos  ::  get rid of tmi
       =|  win=@ud
-      =/  wos=(list @t)  (rip 9 res)
       =<  (decode-from 0 tys)
       |%
       ++  decode-from
@@ -7796,22 +7795,21 @@
             ?(%address %bool %uint)  ::  %int %real %ureal
           :-  +(win)
           ?-  typ
-            %address  `@ux`(rash wor hex)
-            %uint     `@ud`(rash wor hex)
-            %bool     =(1 (rash wor hex))
+            %address  `@ux`wor
+            %uint     `@ud`wor
+            %bool     =(1 wor)
           ==
         ::
             %string
           =+  $(tys ~[%bytes])
-          ~!  -
           [nin (trip (swp 3 q.dat))]
         ::
             %bytes
           :-  +(win)
           ::  find the word index of the actual data.
-          =/  lic=@ud  (div (rash wor hex) 32)
+          =/  lic=@ud  (div wor 32)
           ::  learn the bytelength of the data.
-          =/  len=@ud  (rash (snag lic wos) hex)
+          =/  len=@ud  (snag lic wos)
           (decode-bytes-n +(lic) len)
         ::
             [%bytes-n *]
@@ -7821,11 +7819,11 @@
             [%array *]
           :-  +(win)
           ::  find the word index of the actual data.
-          =.  win  (div (rash wor hex) 32)
+          =.  win  (div wor 32)
           ::  read the elements from their location.
           %-  tail
           %^  decode-array-n  ~[t.typ]  +(win)
-          (rash (snag win wos) hex)
+          (snag win wos)
         ::
             [%array-n *]
           (decode-array-n ~[t.typ] win n.typ)
@@ -7835,18 +7833,20 @@
         |=  [fro=@ud bys=@ud]
         ^-  octs
         ::  parse {bys} bytes from {fro}.
-        =-  [bys (rash - hex)]
-        %^  end  3  (mul 2 bys)
-        %+  can  9
-        %+  turn
-          (swag [fro +((div (dec bys) 32))] wos)
-        |=(a=@t [1 a])
+        :-  bys
+        %^  rsh  3
+          =+  (mod bys 32)
+          ?:(=(0 -) - (sub 32 -))
+        %+  rep  8
+        %-  flop
+        =-  (swag [fro -] wos)
+        +((div (dec bys) 32))
       ::
       ++  decode-array-n
         ::NOTE  we take (list etyp) even though we only operate on
         ::      a single etyp as a workaround for urbit/arvo#673
+        ::NOTE  careful! produces lists without type info
         =|  res=(list)
-        ~&  %watch-out--arrays-without-typeinfo
         |*  [tys=(list etyp) fro=@ud len=@ud]
         ^-  [@ud (list)]
         ?~  tys  !!
@@ -8221,8 +8221,10 @@
     |=  [wat=tape mof=@ud wer=?(%left %right)]
     ^-  tape
     =+  len=(lent wat)
-    ?:  =(len mof)  wat
-    =+  tad=(reap (sub mof (mod len mof)) '0')
+    ?:  =(0 len)  (reap mof '0')
+    =+  mad=(mod len mof)
+    ?:  =(0 mad)  wat
+    =+  tad=(reap (sub mof mad) '0')
     %-  weld
     ?:(?=(%left wer) [tad wat] [wat tad])
   ::
