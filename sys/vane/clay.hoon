@@ -363,7 +363,7 @@
           $%  [%made date=@da result=made-result:ford]  ::
           ==  ==                                        ::
               $:  $b                                    ::
-          $%  {$wake ~}                                ::  timer activate
+          $%  {$wake error=(unit tang)}                 ::  timer activate
           ==  ==                                        ::
               $:  @tas                                  ::  by any
           $%  {$crud p/@tas q/(list tank)}              ::
@@ -4118,6 +4118,11 @@
   ::
       $note  [[hen %give +.q.hin]~ ..^$]
       $wake
+    ::  TODO: handle behn errors
+    ::
+    ?^  error.q.hin
+      [[hen %slip %d %flog %crud %wake u.error.q.hin]~ ..^$]
+    ::
     =^  queued  cue.ruf  ~(get to cue.ruf)
     ::
     =/  queued-duct=duct       -.queued
