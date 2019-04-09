@@ -7099,16 +7099,17 @@
 ++  unix-task                                           ::  input from unix
   $%  {$belt p/belt:dill}                               ::  dill: keyboard
       {$blew p/blew:dill}                               ::  dill: configure
-      {$boat ~}                                        ::  clay: reboot
-      {$born ~}                                        ::  eyre: new process
-      {$hail ~}                                        ::  dill: refresh
+      {$boat ~}                                         ::  clay: reboot
+      {$born ~}                                         ::  eyre: new process
+      [%crud tag=@tas =tang]                            ::  any vane: error report
+      {$hail ~}                                         ::  dill: refresh
       {$hear p/lane:ames q/@}                           ::  ames: input packet
-      {$hook ~}                                        ::  dill: hangup
+      {$hook ~}                                         ::  dill: hangup
       {$into p/desk q/? r/mode:clay}                    ::  clay: external edit
       {$they p/@ud q/httr:eyre}                         ::  eyre: in response
       {$this p/? q/clip:eyre r/httq:eyre}               ::  eyre: in request
-      {$thud ~}                                        ::  eyre: in cancel
-      {$wake ~}                                        ::  behn: wakeup
+      {$thud ~}                                         ::  eyre: in cancel
+      {$wake ~}                                         ::  behn: wakeup
   ==
 ::                                                      ::
 ::::                      ++azimuth                     ::  (2az) azimuth
