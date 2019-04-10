@@ -267,7 +267,7 @@
 +$  pump-state
   $:  live=(qeu live-packet)
       lost=(qeu packet-descriptor)
-      =pump-statistics
+      metrics=pump-metrics
   ==
 ::  +live-packet: data needed to track a packet in flight
 ::
@@ -288,11 +288,11 @@
       =packet-hash
       payload=@
   ==
-::  +pump-statistics: congestion control information
+::  +pump-metrics: congestion control information
 ::
 ::    TODO: document
 ::
-+$  pump-statistics
++$  pump-metrics
   $:  $:  window-length=@ud
           max-packets-out=@ud
           retry-length=@ud
@@ -503,7 +503,7 @@
             [%wake ~]
         ==
       --
-  |=  [pipe-context now=@da eny=@ =bone pump=_(pump) =outbound-state]
+  |=  [pipe-context now=@da eny=@ =bone =outbound-state]
   =*  pipe-context  +<-
   =|  gifts=(list gift)
   ::
@@ -512,9 +512,10 @@
   ++  abet  [gifts=(flop gifts) outbound-state=outbound-state]
   ++  view
     |%
-    ++  queue-count  ^-  @ud         ~(wyt by live-messages.outbound-state)
-    ++  next-wakeup  ^-  (unit @da)  next-wakeup:pump
+    ++  queue-count  `@ud`~(wyt by live-messages.outbound-state)
+    ++  next-wakeup  `(unit @da)`(next-wakeup:pump pump-state.outbound-state)
     --
+  ++  pump-ctx  `pump-context:pump`[gifts=~ state=pump-state.outbound-state]
   ::  +work: handle +task request, producing mutant message-manager core
   ::
   ++  work
@@ -522,11 +523,7 @@
     ^+  manager-core
     ::
     =~  (handle-task task)
-        drain-pump-gifts
-        ::
         feed-packets-to-pump
-        drain-pump-gifts
-        ::
         ack-completed-messages
     ==
   ::  +handle-task: process an incoming request
@@ -543,13 +540,10 @@
   ::  +drain-pump-gifts: extract and apply pump effects, clearing pump
   ::
   ++  drain-pump-gifts
+    |=  pump-gifts=(list gift:pump)
     ^+  manager-core
-    ::
-    =^  pump-gifts  pump-state.outbound-state  abet:pump
-    =.  pump  apex:pump
-    ::
-    |-  ^+  manager-core
     ?~  pump-gifts  manager-core
+    ::
     =.  manager-core  (handle-pump-gift i.pump-gifts)
     ::
     $(pump-gifts t.pump-gifts)
@@ -569,34 +563,39 @@
     |=  [=packet-hash error=(unit error) lag=@dr]
     ^+  manager-core
     ::
-    =.  pump  (work:pump now %back packet-hash error lag)
-    manager-core
+    =^  pump-gifts  pump-state.outbound-state
+      (work:pump pump-ctx now %back packet-hash error lag)
+    ::
+    (drain-pump-gifts pump-gifts)
   ::  +feed-packets-to-pump: feed the pump with as many packets as it can accept
   ::
   ++  feed-packets-to-pump
     ^+  manager-core
     ::
-    =^  packets  manager-core  (collect-packets window-slots.pump)
-    =.  pump  (work:pump now [%pack packets])
+    =^  packets  manager-core  collect-packets
     ::
-    manager-core
+    =^  pump-gifts  pump-state.outbound-state
+      (work:pump pump-ctx now %pack packets)
+    ::
+    (drain-pump-gifts pump-gifts)
   ::  +collect-packets: collect packets to be fed to the pump
   ::
   ++  collect-packets
     =|  packets=(list packet-descriptor)
-    =/  index  till-tick.outbound-state
-    ::
-    |=  window-slots=@ud
     ^+  [packets manager-core]
     ::
+    =/  index  till-tick.outbound-state
+    =/  window-slots=@ud  (window-slots:pump metrics.pump-state.outbound-state)
+    ::  reverse :packets before returning, since we built it backward
+    ::
     =-  [(flop -<) ->]
+    ::
+    |-  ^+  [packets manager-core]
     ::
     ?:  =(0 window-slots)                  [packets manager-core]
     ?:  =(index next-tick.outbound-state)  [packets manager-core]
     ::
-    =^    popped=[remaining-slots=@ud packets=(list packet-descriptor)]
-        manager-core
-      (pop-unsent-packets index window-slots packets)
+    =^  popped  manager-core  (pop-unsent-packets index window-slots packets)
     ::
     %_  $
       index         +(index)
@@ -607,7 +606,7 @@
   ::
   ++  pop-unsent-packets
     |=  [index=@ud window-slots=@ud packets=(list packet-descriptor)]
-    ^+  [[window-slots packets] manager-core]
+    ^+  [[remaining-slots=window-slots packets=packets] manager-core]
     ::
     =/  message=live-message  (~(got by live-messages.outbound-state) index)
     ::
@@ -643,7 +642,8 @@
       ~&  [%apply-packet-ack-fail message-seq]
       ::  remove this message's packets from our packet pump queues
       ::
-      =.  pump  (work:pump now %cull message-seq)
+      =.  pump-state.outbound-state
+        (cull:pump pump-state.outbound-state message-seq)
       ::  finalize the message in :outbound-state, saving error
       ::
       =.  live-messages.outbound-state
@@ -733,8 +733,10 @@
   ++  wake
     ^+  manager-core
     ::
-    =.  pump  (work:pump now %wake ~)
-    manager-core
+    =^  pump-gifts  pump-state.outbound-state
+      (work:pump pump-ctx now %wake ~)
+    ::
+    (drain-pump-gifts pump-gifts)
   ::
   ++  give  |=(=gift manager-core(gifts [gift gifts]))
   --
@@ -744,14 +746,14 @@
   =>  |%
       ::  +gift: packet pump effect; either %good logical ack, or %send packet
       ::
-      ++  gift
+      +$  gift
         $%  [%good =packet-hash =fragment-index rtt=@dr error=(unit error)]
             [%send =packet-hash =fragment-index payload=@]
             ::  TODO [%wait @da] to set timer
         ==
       ::  +task: request to the packet pump
       ::
-      ++  task
+      +$  task
         $%  ::  %back: raw acknowledgment
             ::
             ::    packet-hash: the hash of the packet we're acknowledging
@@ -771,53 +773,61 @@
             ::
             [%wake ~]
         ==
+      ::  +pump-context: mutable state for running the pump
+      ::
+      +$  pump-context  [gifts=(list gift) state=pump-state]
       --
-  |=  =pump-state
-  =|  gifts=(list gift)
   |%
-  ::  |entry-points: external interface to the |pump core
-  ::
-  +|  %entry-points
   ::  +work: handle +task request, producing effects and new +pump-state
   ::
   ++  work
-    |=  [now=@da =task]
+    |=  [ctx=pump-context now=@da =task]
+    ^-  pump-context
+    ::  reverse effects before returning, since we prepend them as we run
     ::
-    ^+  pump-core
+    =-  [(flop gifts.-) state.-]
+    ^-  pump-context
     ::
     ?-  -.task
-      %back  (back now [packet-hash error lag]:task)
-      %cull  (cull message-seq.task)
-      %pack  (send-packets now packets.task)
-      %wake  (wake now)
+      %back  (back ctx now [packet-hash error lag]:task)
+      %cull  [gifts.ctx (cull state.ctx message-seq.task)]
+      %pack  (send-packets ctx now packets.task)
+      %wake  [gifts.ctx (wake state.ctx now)]
     ==
+  ::  +abet: finalize before returning, reversing effects
+  ::
+  ++  abet
+    |=  ctx=pump-context
+    ^-  pump-context
+    [(flop gifts.ctx) state.ctx]
   ::  +next-wakeup: when should this core wake back up to do more processing?
   ::
   ::    Produces null if no wakeup needed.
   ::    TODO: call in +abet to produce a set-timer effect
   ::
   ++  next-wakeup
+    |=  state=pump-state
     ^-  (unit @da)
-    =/  next-expiring-packet=(unit live-packet)  ~(top to live.pump-state)
-    ?~  next-expiring-packet
+    ::
+    =/  next=(unit live-packet)  ~(top to live.state)
+    ?~  next
       ~
-    `expiration-date.u.next-expiring-packet
+    `expiration-date.u.next
   ::  +window-slots: how many packets can be sent before window fills up?
   ::
   ::   Called externally to query window information.
   ::
   ++  window-slots
+    |=  metrics=pump-metrics
     ^-  @ud
-    =,  pump-statistics.pump-state
     ::
-    (sub-safe max-packets-out (add window-length retry-length))
-  ::  +initialize-pump-statistics: make blank stats from :now, stateless
+    %+  sub-safe  max-packets-out.metrics
+    (add [window-length retry-length]:metrics)
+  ::  +initialize-pump-metrics: make blank metrics from :now, stateless
   ::
-  ::    TODO: awkward calling convention; move outside |pump ?
-  ::
-  ++  initialize-pump-statistics
+  ++  initialize-pump-metrics
     |=  now=@da
-    ^-  pump-statistics
+    ^-  pump-metrics
     ::
     :*  :*  ^=  window-length    0
             ^=  max-packets-out  2
@@ -827,37 +837,28 @@
             ^=  last-sent        `@da`(sub now ~d1)
             ^=  last-deadline    `@da`(sub now ~d1)
     ==  ==
-  ::  +abet: finalize core, reversing effects
-  ::
-  ++  abet  [(flop gifts) pump-state]
-  ::  +apex: flush effects (called before rerunning the pump)
-  ::
-  ++  apex  pump-core(gifts ~)
-  ::  %utilities: helper arms
-  ::
-  +|  %utilities
   ::  +back: process raw ack
   ::
   ::    TODO: better docs
   ::    TODO: test to verify queue invariants
   ::
   ++  back
-    |=  [now=@da =packet-hash error=(unit error) lag=@dr]
-    ^+  pump-core
+    |=  [ctx=pump-context now=@da =packet-hash error=(unit error) lag=@dr]
+    ^-  pump-context
     ::  post-process by adjusting timing information and losing packets
     ::
-    =-  =.  live.pump-state  lov
-        =.  pump-core  (lose ded)
+    =-  =.  live.state.ctx  lov
+        =.  state.ctx  (lose state.ctx ded)
         ::  rtt: roundtrip time, subtracting reported computation :lag
         ::
         =/  rtt=@dr
           ?~  ack  ~s0
           (sub-safe (sub now sent-date.u.ack) lag)
         ::
-        (done ack packet-hash error rtt)
-    ::  liv: iteratee starting as :live.pump-state
+        (done ctx ack packet-hash error rtt)
+    ::  liv: iteratee starting as :live.state.ctx
     ::
-    =/  liv=(qeu live-packet)  live.pump-state
+    =/  liv=(qeu live-packet)  live.state.ctx
     ::  main loop
     ::
     |-  ^-  $:  ack=(unit live-packet)
@@ -898,16 +899,16 @@
   ::    Clears all packets from a message from the :live and :lost queues.
   ::
   ::    TODO test
-  ::    TODO: shouldn't this adjust the accounting in :pump-statistics?
+  ::    TODO: shouldn't this adjust the accounting in :pump-metrics?
   ::          specifically, :retry-length and :window-length
   ::
   ++  cull
-    |=  =message-seq
-    ^+  pump-core
+    |=  [state=pump-state =message-seq]
+    ^-  pump-state
     ::
-    =.  live.pump-state
-      =/  liv  live.pump-state
-      |-  ^+  live.pump-state
+    =.  live.state
+      =/  liv  live.state
+      |-  ^+  live.state
       ?~  liv  ~
       ::  first recurse on left and right trees
       ::
@@ -918,9 +919,9 @@
         vil
       ~(nip to `(qeu live-packet)`vil)
     ::
-    =.  lost.pump-state
-      =/  lop  lost.pump-state
-      |-  ^+  lost.pump-state
+    =.  lost.state
+      =/  lop  lost.state
+      |-  ^+  lost.state
       ?~  lop  ~
       ::  first recurse on left and right trees
       ::
@@ -931,26 +932,25 @@
         pol
       ~(nip to `(qeu packet-descriptor)`pol)
     ::
-    pump-core
+    state
   ::  +done: process a cooked ack; may emit a %good ack gift
   ::
   ++  done
-    |=  $:  live-packet=(unit live-packet)
+    |=  $:  ctx=pump-context
+            live-packet=(unit live-packet)
             =packet-hash
             error=(unit error)
             rtt=@dr
         ==
-    ^+  pump-core
-    ?~  live-packet
-      pump-core
+    ^-  pump-context
+    ?~  live-packet  ctx
     ::
     =*  fragment-index  fragment-index.packet-descriptor.u.live-packet
-    =.  pump-core  (give [%good packet-hash fragment-index rtt error])
+    =.  ctx  (give ctx [%good packet-hash fragment-index rtt error])
     ::
-    =.  window-length.pump-statistics.pump-state
-      (dec window-length.pump-statistics.pump-state)
+    =.  window-length.metrics.state.ctx  (dec window-length.metrics.state.ctx)
     ::
-    pump-core
+    ctx
   ::  +enqueue-lost-packet: ordered enqueue into :lost.pump-state
   ::
   ::    The :lost queue isn't really a queue in case of
@@ -968,13 +968,12 @@
   ::    TODO: write queue order function
   ::
   ++  enqueue-lost-packet
+    |=  [state=pump-state pac=packet-descriptor]
+    ^+  lost.state
     ::
-    |=  pac=packet-descriptor
-    ^+  lost.pump-state
+    =/  lop  lost.state
     ::
-    =/  lop  lost.pump-state
-    ::
-    |-  ^+  lost.pump-state
+    |-  ^+  lost.state
     ?~  lop  [pac ~ ~]
     ::
     ?:  ?|  (older fragment-index.pac fragment-index.n.lop)
@@ -986,100 +985,94 @@
   ::  +fire-packet: emit a %send gift for a packet and do bookkeeping
   ::
   ++  fire-packet
-    |=  [now=@da pac=packet-descriptor]
-    ^+  pump-core
-    ::  stats: read-only accessor for convenience
+    |=  [ctx=pump-context now=@da pac=packet-descriptor]
+    ^-  pump-context
+    ::  metrics: read-only accessor for convenience
     ::
-    =/  stats  pump-statistics.pump-state
+    =/  metrics  metrics.state.ctx
     ::  sanity check: make sure we don't exceed the max packets in flight
     ::
-    ?>  (lth [window-length max-packets-out]:stats)
+    ?>  (lth [window-length max-packets-out]:metrics)
     ::  reset :last-sent date to :now or incremented previous value
     ::
-    =.  last-sent.pump-statistics.pump-state
-      ?:  (gth now last-sent.stats)
+    =.  last-sent.metrics.state.ctx
+      ?:  (gth now last-sent.metrics)
         now
-      +(last-sent.stats)
+      +(last-sent.metrics)
     ::  reset :last-deadline to twice roundtrip time from now, or increment
     ::
-    =.  last-deadline.pump-statistics.pump-state
-      =/  new-deadline=@da  (add now (mul 2 rtt.stats))
-      ?:  (gth new-deadline last-deadline.stats)
+    =.  last-deadline.metrics.state.ctx
+      =/  new-deadline=@da  (add now (mul 2 rtt.metrics))
+      ?:  (gth new-deadline last-deadline.metrics)
         new-deadline
-      +(last-deadline.stats)
+      +(last-deadline.metrics)
     ::  increment our count of packets in flight
     ::
-    =.  window-length.pump-statistics.pump-state
-      +(window-length.pump-statistics.pump-state)
+    =.  window-length.metrics.state.ctx  +(window-length.metrics.state.ctx)
     ::  register the packet in the :live queue
     ::
-    =.  live.pump-state
-      %-  ~(put to live.pump-state)
+    =.  live.state.ctx
+      %-  ~(put to live.state.ctx)
       ^-  live-packet
-      :+  last-deadline.pump-statistics.pump-state
-        last-sent.pump-statistics.pump-state
+      :+  last-deadline.metrics.state.ctx
+        last-sent.metrics.state.ctx
       pac
     ::  emit the packet
     ::
-    (give [%send packet-hash fragment-index payload]:pac)
+    (give ctx [%send packet-hash fragment-index payload]:pac)
   ::  +lose: abandon packets
   ::
   ++  lose
-    |=  packets=(list live-packet)
-    ^+  pump-core
-    ?~  packets  pump-core
+    |=  [state=pump-state packets=(list live-packet)]
+    ^-  pump-state
+    ?~  packets  state
     ::
-    =.  lost.pump-state  (enqueue-lost-packet packet-descriptor.i.packets)
+    =.  lost.state  (enqueue-lost-packet state packet-descriptor.i.packets)
     ::
-    %=    $
-        packets  t.packets
-    ::
-        window-length.pump-statistics.pump-state
-      (dec window-length.pump-statistics.pump-state)
-    ::
-        retry-length.pump-statistics.pump-state
-      +(retry-length.pump-statistics.pump-state)
+    %=  $
+      packets                      t.packets
+      window-length.metrics.state  (dec window-length.metrics.state)
+      retry-length.metrics.state   +(retry-length.metrics.state)
     ==
   ::  +send-packets: resends lost packets then sends new until window closes
   ::
   ++  send-packets
-    |=  [now=@da packets=(list packet-descriptor)]
-    ^+  pump-core
+    |=  [ctx=pump-context now=@da packets=(list packet-descriptor)]
+    ^-  pump-context
     ::  make sure we weren't asked to send more packets than allowed
     ::
-    ?>  (lte (lent packets) window-slots)
+    ?>  (lte (lent packets) (window-slots metrics.state.ctx))
     ::  first, resend as many lost packets from our backlog as possible
     ::
     =>  |-  ^+  .
-        ?:  =(~ lost.pump-state)  .
+        ?:  =(~ lost.state.ctx)  .
         ::  send a lost packet from our backlog
         ::
-        =^  lost-packet  lost.pump-state  ~(get to lost.pump-state)
+        =^  lost-packet  lost.state.ctx  ~(get to lost.state.ctx)
         ::
-        =.  retry-length.pump-statistics.pump-state
-          (dec retry-length.pump-statistics.pump-state)
-        ::
-        =.  pump-core  (fire-packet now lost-packet)
+        =.  retry-length.metrics.state.ctx  (dec retry-length.metrics.state.ctx)
+        =.  ctx  (fire-packet ctx now lost-packet)
         $
     ::  now that we've finished the backlog, send the requested packets
     ::
-    |-  ^+  pump-core
-    ?~  packets  pump-core
+    |-  ^+  ctx
+    ?~  packets  ctx
     ::
-    =.  pump-core  (fire-packet now i.packets)
+    =.  ctx  (fire-packet ctx now i.packets)
     $(packets t.packets)
   ::  +wake: handle elapsed timer
   ::
   ++  wake
-    |=  now=@da
-    ^+  pump-core
+    |=  [state=pump-state now=@da]
+    ^-  pump-state
     ::
-    =-  (lose(live.pump-state live.-) dead.-)
+    =-  =.  live.state  live.-
+        (lose state dead.-)
     ::
     ^-  [dead=(list live-packet) live=(qeu live-packet)]
     ::
     =|  dead=(list live-packet)
-    =/  live=(qeu live-packet)  live.pump-state
+    =/  live=(qeu live-packet)  live.state
     ::  binary search through :live for dead packets
     ::
     ::    The :live packet tree is sorted right-to-left by the packets'
@@ -1117,8 +1110,10 @@
     [dead.right-result live(r live.right-result)]
   ::  +give: emit effect, prepended to :gifts to be reversed before emission
   ::
-  ++  give  |=(=gift pump-core(gifts [gift gifts]))
-  ++  pump-core  .
+  ++  give
+    |=  [ctx=pump-context =gift]
+    ^-  pump-context
+    [[gift gifts.ctx] state.ctx]
   --
 ::  +encode-meal: generate a message and packets from a +meal, with effects
 ::

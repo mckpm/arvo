@@ -321,12 +321,12 @@
       %-  ~(gas to *(qeu packet-descriptor:aloe))
       lost-list
     ::
-    (initialize-pump-statistics:(pump:aloe) now.fix)
+    (initialize-pump-metrics:pump:aloe now.fix)
   ::
-  =/  pump  (pump:aloe pump-state)
+  =/  ctx=pump-context:pump:aloe  [~ pump-state]
   ::  cull message 4
   ::
-  =/  result1=pump-state:aloe  +:abet:(work:pump now.fix [%cull 4])
+  =/  result1=pump-state:aloe  +:(work:pump:aloe ctx now.fix [%cull 4])
   ::
   ;:  weld
     %+  expect-eq
@@ -357,9 +357,9 @@
   =/  =pump-state:aloe
     :+  live=~
       lost=~
-    (initialize-pump-statistics:(pump:aloe) now.fix)
+    (initialize-pump-metrics:pump:aloe now.fix)
   ::
-  =/  pump  (pump:aloe pump-state)
+  =/  ctx=pump-context:pump:aloe  [~ pump-state]
   ::
   =/  packets=(list packet-descriptor:aloe)
     %+  turn  (gulf 1 2)
@@ -374,8 +374,8 @@
       payload         n
     ==
   ::
-  =/  result1=[gifts=(list gift:pump:aloe) =pump-state:aloe]
-    abet:(work:pump now.fix [%pack packets])
+  =/  result1=pump-context:pump:aloe
+    (work:pump:aloe ctx now.fix [%pack packets])
   ::
   ;:  weld
     %+  expect-eq
@@ -383,7 +383,7 @@
               ^=  max-packets-out  2
               ^=  retry-length     0
           ==
-      !>  -.pump-statistics.pump-state.result1
+      !>  -.metrics.state.result1
   ::
     %+  expect-eq
       !>  :~  [%send [packet-hash fragment-index payload]:(snag 0 packets)]
@@ -391,6 +391,46 @@
           ==
       !>  gifts.result1
   ==
+::
+++  test-message-manager-mess-basic  ^-  tang
+  ::
+  =/  =pipe-context:aloe
+    =-  [our.fix our-life.fix our-crub.fix her.fix -]
+    ^-  pipe:aloe
+    [fast-key=~ `her-life.fix her-public-keys.fix her-sponsors.fix]
+  ::
+  =/  =pump-state:aloe
+    :+  live=~
+      lost=~
+    (initialize-pump-metrics:pump:aloe now.fix)
+  ::
+  =/  =outbound-state:aloe
+    :*  ^=  next-tick      0
+        ^=  till-tick      0
+        ^=  live-messages  ~
+        pump-state
+    ==
+  ::
+  =/  manager0
+    %-  message-manager:aloe
+    [pipe-context now.fix eny.fix bone=4 outbound-state]
+  ::
+  =/  manager1
+    %-  work:manager0
+    ^-  task:manager0
+    [%mess /remote/route/foo message=[%message %foo]]
+  ::
+  =/  result1  abet:manager1
+  ::
+  =/  manager2
+    %-  work:manager1
+    ^-  task:manager1
+    [%back packet-hash=0v7.o5rlu.ms7sv.kmf23.o2r5g.je1fl error=~ lag=`@dr`0]
+  ::
+  =/  result2  abet:manager2
+  ::  TODO assert correctness
+  ~&  result2
+  ~
 ::
 ++  aloe-call
   |=  $:  aloe-gate=_aloe-gate
