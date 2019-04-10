@@ -427,10 +427,35 @@
     ^-  task:manager1
     [%back packet-hash=0v7.o5rlu.ms7sv.kmf23.o2r5g.je1fl error=~ lag=`@dr`0]
   ::
-  =/  result2  abet:manager2
-  ::  TODO assert correctness
-  ~&  result2
-  ~
+  =/  result2=[gifts=(list gift:manager2) =outbound-state:aloe]
+    abet:manager2
+  ::
+  ;:  weld
+    %+  expect-eq
+      !>  2
+      !>  (lent gifts.result2)
+  ::
+    %+  expect-eq
+      !>  %.y
+      !>  %+  lth  now.fix
+          =-  ?>  ?=(%symmetric-key -.-)
+              expiration-date.-
+          ^-  gift:manager2
+          %+  snag  0
+          %+  skim  gifts.result2
+          |=  ^
+          ^-  ?
+          ?=(%symmetric-key -.+<)
+  ::
+    %+  expect-eq
+      !>  [next-tick=1 till-tick=0]
+      !>  [next-tick till-tick]:outbound-state.result2
+  ::
+    %+  expect-eq
+      !>  [window-length=0 retry-length=0 last-sent=now.fix]
+      !>  =<  [window-length retry-length last-sent]
+          metrics.pump-state.outbound-state.result2
+  ==
 ::
 ++  aloe-call
   |=  $:  aloe-gate=_aloe-gate
