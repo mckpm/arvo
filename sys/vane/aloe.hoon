@@ -640,17 +640,17 @@
     ?^  error
       =/  =message-seq  message-seq.fragment-index
       ~&  [%apply-packet-ack-fail message-seq]
-      ::  remove this message's packets from our packet pump queues
-      ::
-      =.  pump-state.outbound-state
-        (cull:pump pump-state.outbound-state message-seq)
       ::  finalize the message in :outbound-state, saving error
       ::
       =.  live-messages.outbound-state
         %+  ~(put by live-messages.outbound-state)  message-seq
         u.message(unsent-packets ~, error `error)
+      ::  remove this message's packets from our packet pump queues
       ::
-      manager-core
+      =^  pump-gifts  pump-state.outbound-state
+        (work:pump pump-ctx now %cull message-seq)
+      ::
+      (drain-pump-gifts pump-gifts)
     ::  sanity check: make sure we haven't acked more packets than exist
     ::
     ?>  (lth [acked-fragments total-fragments]:u.message)
