@@ -427,7 +427,7 @@
     ^-  task:manager1
     [%back packet-hash=0v7.o5rlu.ms7sv.kmf23.o2r5g.je1fl error=~ lag=`@dr`0]
   ::
-  =/  result2=[gifts=(list gift:manager2) =outbound-state:aloe]
+  =/  result2
     abet:manager2
   ::
   ;:  weld
@@ -435,6 +435,8 @@
       !>  2
       !>  (lent gifts.result2)
   ::
+    ::  assert key expiration date is in the future
+    ::
     %+  expect-eq
       !>  %.y
       !>  %+  lth  now.fix
@@ -456,6 +458,95 @@
       !>  =<  [window-length retry-length last-sent]
           metrics.pump-state.outbound-state.result2
   ==
+::
+++  test-message-manager-mess-fragments  ^-  tang
+  ::
+  =/  =pipe-context:aloe
+    =-  [our.fix our-life.fix our-crub.fix her.fix -]
+    ^-  pipe:aloe
+    [fast-key=~ `her-life.fix her-public-keys.fix her-sponsors.fix]
+  ::
+  =/  =pump-state:aloe
+    :+  live=~
+      lost=~
+    (initialize-pump-metrics:pump:aloe now.fix)
+  ::
+  =/  =outbound-state:aloe
+    :*  ^=  next-tick      0
+        ^=  till-tick      0
+        ^=  live-messages  ~
+        pump-state
+    ==
+  ::
+  =/  manager0
+    %-  message-manager:aloe
+    [pipe-context now.fix eny.fix bone=4 outbound-state]
+  ~&  %manager0
+  ::
+  =/  manager1
+    %-  work:manager0
+    ^-  task:manager0
+    [%mess /remote/route/foo message=[%message (gulf 1 2.000)]]
+  ~&  %manager1
+  ::
+  =/  result1  abet:manager1
+  ~&  :-  %manager1-abet
+      (window-slots:pump:aloe metrics.pump-state.outbound-state.result1)
+  ::  at a new date, ack second packet, but not the first
+  ::
+  =/  new-date  `@da`(add now.fix ~s10)
+  =/  manager2
+    %-  message-manager:aloe
+    [pipe-context new-date eny.fix bone=4 outbound-state.result1]
+  ~&  :-  %manager2
+      (window-slots:pump:aloe metrics.pump-state.outbound-state.manager2)
+  ::
+  =/  manager3
+    %-  work:manager2
+    ^-  task:manager2
+    [%back packet-hash=0v6.e5p8r.rb8jv.qs7r4.d2d8i.ajbuk error=~ lag=`@dr`0]
+  ~&  :-  %manager3
+      (window-slots:pump:aloe metrics.pump-state.outbound-state.manager3)
+  ::
+  =/  result3  abet:manager3
+  ~&  :-  %manager3-abet
+      (window-slots:pump:aloe metrics.pump-state.outbound-state.result3)
+  ::
+  ;:  weld
+    %+  expect-eq
+      !>  1
+      !>  (lent (skim gifts.result1 is-gift-symmetric-key))
+  ::
+    %+  expect-eq
+      !>  2
+      !>  (lent (skim gifts.result1 is-gift-send))
+  ::
+    %+  expect-eq
+      !>  0
+      !>  (window-slots:pump:aloe metrics.pump-state.outbound-state.result1)
+  ::
+    %+  expect-eq
+      !>  [window-length=2 retry-length=0]
+      !>  [window-length retry-length]:metrics.pump-state.outbound-state.result1
+  ::
+    %+  expect-eq
+      !>  1
+      !>  (lent (skim gifts.result3 is-gift-send))
+  ::
+    %+  expect-eq
+      !>  [window-length=2 retry-length=0]
+      !>  [window-length retry-length]:metrics.pump-state.outbound-state.result3
+  ==
+::
+++  is-gift-send
+  |*  gift=^
+  ^-  ?
+  ?=(%send -.gift)
+::
+++  is-gift-symmetric-key
+  |*  gift=^
+  ^-  ?
+  ?=(%symmetric-key -.gift)
 ::
 ++  aloe-call
   |=  $:  aloe-gate=_aloe-gate

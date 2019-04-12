@@ -237,7 +237,7 @@
 ::
 ::    TODO docs when I actually understand this
 ::    next-tick: next tick to fill
-::    till-tick: acked tick until
+::    till-tick: earliest unfinished message
 ::
 +$  outbound-state
   $:  next-tick=message-seq
@@ -576,6 +576,7 @@
     ::
     =^  pump-gifts  pump-state.outbound-state
       (work:pump pump-ctx now %pack packets)
+    ~&  %pump-gifts^(turn `(list gift:pump)`pump-gifts head)
     ::
     (drain-pump-gifts pump-gifts)
   ::  +collect-packets: collect packets to be fed to the pump
@@ -586,6 +587,7 @@
     ::
     =/  index  till-tick.outbound-state
     =/  window-slots=@ud  (window-slots:pump metrics.pump-state.outbound-state)
+    ~&  slots-pre-collect=window-slots
     ::  reverse :packets before returning, since we built it backward
     ::
     =-  [(flop -<) ->]
@@ -1039,27 +1041,27 @@
   ++  send-packets
     |=  [ctx=pump-context now=@da packets=(list packet-descriptor)]
     ^-  pump-context
+    =-  ~&  %send-packets^requested=(lent packets)^sent=(lent gifts.-)  -
     ::  make sure we weren't asked to send more packets than allowed
     ::
-    ?>  (lte (lent packets) (window-slots metrics.state.ctx))
-    ::  first, resend as many lost packets from our backlog as possible
-    ::
-    =>  |-  ^+  .
-        ?:  =(~ lost.state.ctx)  .
-        ::  send a lost packet from our backlog
-        ::
-        =^  lost-packet  lost.state.ctx  ~(get to lost.state.ctx)
-        ::
-        =.  retry-length.metrics.state.ctx  (dec retry-length.metrics.state.ctx)
-        =.  ctx  (fire-packet ctx now lost-packet)
-        $
-    ::  now that we've finished the backlog, send the requested packets
+    =/  slots  (window-slots metrics.state.ctx)
+    ?>  (lte (lent packets) slots)
     ::
     |-  ^+  ctx
-    ?~  packets  ctx
+    ?:  =(0 slots)  ctx
+    ?~  packets     ctx
+    ::  first, resend as many lost packets from our backlog as possible
+    ::
+    ?.  =(~ lost.state.ctx)
+      =^  lost-packet  lost.state.ctx  ~(get to lost.state.ctx)
+      =.  retry-length.metrics.state.ctx  (dec retry-length.metrics.state.ctx)
+      ::
+      =.  ctx  (fire-packet ctx now lost-packet)
+      $(slots (dec slots))
+    ::  now that we've finished the backlog, send the requested packets
     ::
     =.  ctx  (fire-packet ctx now i.packets)
-    $(packets t.packets)
+    $(packets t.packets, slots (dec slots))
   ::  +wake: handle elapsed timer
   ::
   ++  wake
@@ -1126,7 +1128,7 @@
             ::
             ::    Connections start as %full, which uses asymmetric encryption.
             ::    This core can produce an upgrade to a shared symmetric key,
-            ::    which is must faster; hence the %fast tag on that encryption.
+            ::    which is much faster; hence the %fast tag on that encryption.
             ::
             [%symmetric-key symmetric-key=(expiring symmetric-key)]
         ==
@@ -1197,8 +1199,9 @@
     ?~  her-life.pipe
       :-  ~
       :-  %open
-      %^    jam
-          our-life
+      %-  jam
+      ^-  open:packet-format
+      :+  our-life
         deed=~
       (sign:as:crypto-core (jam meal))
     ::  asymmetric encrypt; also produce symmetric key gift for upgrade
