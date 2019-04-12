@@ -1684,7 +1684,7 @@
           {$mack p/(unit tang)}                         ::  message ack
       ==                                                ::
     ++  task                                            ::  incoming request
-      $%  {$conf p/dock q/(pair ship desk)}             ::  configure app
+      $%  {$conf p/dock q/dock}                         ::  configure app
           {$init p/ship}                                ::  set owner
           {$deal p/sock q/cush}                         ::  full transmission
           {$sunk p=ship q/rift}                         ::  report death
