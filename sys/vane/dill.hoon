@@ -63,7 +63,7 @@
   $%  {$wegh $~}                                        ::
   ==                                                    ::
 ++  note-gall                                           ::
-  $%  {$conf dock $load ship desk}                      ::
+  $%  {$conf dock dock}                                 ::
       {$deal p/sock q/cush:gall}                        ::
       {$wegh $~}                                        ::
   ==                                                    ::
