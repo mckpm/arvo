@@ -203,36 +203,40 @@
   ==  ==  ==
 ::  +ames-state: all persistent state
 ::
-+$  ames-state  ~
-::  +domain: an HTTP domain, as list of '.'-delimited segments
-::
-+$  domain  (list @t)
-::  +lane: route; ip addresss, port, and expiration date
-::
-::    A lane can expire when we're no longer confident the other party
-::    is still reachable using this route.
-::
-::    TODO: more docs
-::
-+$  lane
-  $%  [%if (expiring [port=@ud ipv4=@if])]
-      [%is port=@ud lane=(unit lane) ipv6=@is]
-      [%ix (expiring [port=@ud ipv4=@if])]
++$  ames-state
+  $:  =life
+      crypto-core=acru:ames
+      friends-blocked=(map ship blocked-channel)
+      friends-open=(map ship friend-state)
   ==
-+$  symmetric-key       @uvI
-+$  public-key          pass
-+$  private-key         ring
-+$  key-hash            @uvH
-+$  signature           @
-+$  message-descriptor  [=message-id encoding-num=@ num-fragments=@]
-+$  message-id          [=bone =message-seq]
-+$  message-seq         @ud
-+$  fragment-num        @ud
-+$  fragment-index      [=message-seq =fragment-num]
-+$  packet-hash         @uvH
-+$  error               [tag=@tas =tang]
-+$  packet              [[to=ship from=ship] =encoding payload=@]
-+$  encoding            ?(%none %open %fast %full)
++$  friend-state
+  $:  =pipe
+      lane=(unit lane)
+      =bone-manager
+      inbound=(map bone inbound-state)
+      outbound=(map bone outbound-state)
+  ==
++$  bone-manager
+  $:  next=bone
+      by-duct=(map duct bone)
+      by-bone=(map bone duct)
+  ==
++$  blocked-channel
+  $:  inbound-packets=(list [=lane packet=@])
+      outbound-messages=(list [=duct route=path message=*])
+  ==
++$  inbound-state
+  $:  last-acked=message-seq
+      partial-messages=(map message-seq partial-message)
+      awaiting-application=(unit [=message-seq =packet-hash =lane])
+      nacks=(map message-seq error)
+  ==
++$  partial-message
+  $:  =encoding
+      num-received=@ud
+      next-fragment=@ud
+      fragments=(map @ud @)
+  ==
 ::  +outbound-state: all data relevant to sending messages on a pipe
 ::
 ::    TODO docs when I actually understand this
@@ -353,12 +357,6 @@
 ::  +deed: identity attestation, typically signed by sponsor
 ::
 +$  deed  (attested [=life =public-key =signature])
-::  +expiring: a value that expires at the specified date
-::
-+*  expiring  [value]  [expiration-date=@da value]
-::  +attested: a value signed by :ship.oath to attest to its validity
-::
-+*  attested  [value]  [oath=[=ship =life =signature] value]
 ::
 ++  packet-format
   |%
@@ -367,6 +365,41 @@
   +$  fast  [=key-hash encrypted-payload=@]
   +$  full  [[=to=life =from=life] deed=(unit deed) encrypted-payload=@]
   --
+::  +domain: an HTTP domain, as list of '.'-delimited segments
+::
++$  domain  (list @t)
+::  +lane: route; ip addresss, port, and expiration date
+::
+::    A lane can expire when we're no longer confident the other party
+::    is still reachable using this route.
+::
+::    TODO: more docs
+::
++$  lane
+  $%  [%if (expiring [port=@ud ipv4=@if])]
+      [%is port=@ud lane=(unit lane) ipv6=@is]
+      [%ix (expiring [port=@ud ipv4=@if])]
+  ==
++$  symmetric-key       @uvI
++$  public-key          pass
++$  private-key         ring
++$  key-hash            @uvH
++$  signature           @
++$  message-descriptor  [=message-id encoding-num=@ num-fragments=@]
++$  message-id          [=bone =message-seq]
++$  message-seq         @ud
++$  fragment-num        @ud
++$  fragment-index      [=message-seq =fragment-num]
++$  packet-hash         @uvH
++$  error               [tag=@tas =tang]
++$  packet              [[to=ship from=ship] =encoding payload=@]
++$  encoding            ?(%none %open %fast %full)
+::  +expiring: a value that expires at the specified date
+::
++*  expiring  [value]  [expiration-date=@da value]
+::  +attested: a value signed by :ship.oath to attest to its validity
+::
++*  attested  [value]  [oath=[=ship =life =signature] value]
 --
 =<
 ::  vane interface core
@@ -474,6 +507,73 @@
   ++  emit  |=(=move event-core(moves [move moves]))
   ::
   ++  event-core  .
+  --
+::  |main: high-level transceiver core
+::
+++  main
+  =>  |%
+      +$  gift
+        $%  [%east =duct =ship route=path message=*]
+            [%home =lane packet=@]
+            [%symmetric-key =ship (expiring =symmetric-key)]
+            [%meet =deed]
+            [%rest =duct error=(unit error)]
+            [%send =lane packet=@]
+            [%veil =ship]
+            [%west =ship =bone route=path message=*]
+        ==
+      +$  task
+        $%  [%clue =ship =pipe]
+            [%done =ship =bone error=(unit error)]
+            [%hear =lane packet=@]
+            [%mess =ship =duct route=path message=*]
+            [%rend =ship =bone route=path message=*]
+            [%wake error=(unit tang)]
+        ==
+      --
+  ::
+  =|  gifts=(list gift)
+  ::
+  |=  $:  [now=@da eny=@ our=ship]
+          state=ames-state
+      ==
+  |%
+  ++  main-core  .
+  ++  abet  [(flop gifts) state]
+  ++  give  |=(=gift main-core(gifts [gift gifts]))
+  ++  work
+    |=  =task
+    ^+  main-core
+    ::
+    ?-    -.task
+        %clue
+      !!
+    ::
+        %done
+      !!
+    ::
+        %hear
+      !!
+    ::
+        %mess
+      !!
+    ::
+        %rend
+      !!
+    ::
+        %wake
+      !!
+    ==
+  ::
+  ++  per-friend
+    |=  [her=ship =friend-state]
+    |%
+    ++  abet
+      =.  friends-open.state  (~(put by friends-open.state) her friend-state)
+      main-core
+    ::
+    ++  friend-core  .
+    --
   --
 ::  |message-manager: TODO docs
 ::
@@ -1231,6 +1331,163 @@
       (~(got by her-public-keys.pipe) u.her-life.pipe)
     (jam [new-symmetric-key (jam meal)])
   --
+::  |message-decoder: decode and assemble input packets into messages
+::
+::    TODO: document
+::
+++  message-decoder
+  =>  |%
+      +$  gift
+        $%  [%fore =ship =lane packet=@]
+            [%have =bone route=path message=*]
+            [%symmetric-key =symmetric-key]
+            [%meet =ship =life =public-key]
+            [%rack =bone =packet-hash error=(unit error)]
+            [%rout =lane]
+            [%sack =bone =packet-hash error=(unit error)]
+        ==
+      +$  task
+        $%  [%done =bone error=(unit error)]
+            [%hear =lane =packet-hash =encoding packet=@]
+        ==
+      --
+  ::
+  =|  gifts=(list gift)
+  ::
+  |=  $:  her=ship
+          crypto-core=acru:ames
+          =pipe
+          bone-states=(map bone inbound-state)
+      ==
+  |%
+  ++  decoder-core  .
+  ++  abet  [(flop gifts) bone-states]
+  ++  give  |=(=gift decoder-core(gifts [gift gifts]))
+  ++  work
+    |=  =task
+    ^+  decoder-core
+    ::
+    ?-    -.task
+        %done
+      =/  =inbound-state  (~(got by bone-states) bone.task)
+      =/  to-apply  (need awaiting-application.inbound-state)
+      ::
+      =/  assembler
+        %-  message-assembler  :*
+          bone.task
+          message-seq.to-apply
+          authenticated=%.y
+          packet-hash.to-apply
+          lane.to-apply
+          inbound-state
+        ==
+      ::
+      abet:(on-message-completed:assembler error.task)
+    ::
+        %hear
+      =+  ^-  [gifts=(list gift:interpret-packet) authenticated=? =meal]
+          ::
+          %-  (interpret-packet her crypto-core pipe)
+          [encoding packet]:task
+      ::
+      =.  decoder-core
+        |-  ^+  decoder-core
+        ?~  gifts  decoder-core
+        =.  decoder-core  (give i.gifts)
+        $(gifts t.gifts)
+      ::
+      =?  decoder-core  authenticated  (give %rout lane.task)
+      ::
+      ?-    -.meal
+          %back
+        ~|  %unauthenticated-ack-from^her
+        ?>  authenticated
+        (give %rack [bone packet-hash error]:meal)
+      ::
+          %bond
+        =/  =inbound-state
+          %-  fall  :_  *inbound-state
+          (~(get by bone-states) bone.message-id.meal)
+        ::
+        =/  assembler
+          %-  message-assembler  :*
+            bone.message-id.meal
+            message-seq.message-id.meal
+            authenticated
+            packet-hash.task
+            lane.task
+            inbound-state
+          ==
+        ::
+        abet:(on-bond:assembler [remote-route message]:meal)
+      ::
+          %carp
+        =/  =message-id  message-id.message-descriptor.meal
+        ::
+        =/  =inbound-state
+          %-  fall  :_  *inbound-state
+          (~(get by bone-states) bone.message-id)
+        ::
+        =/  assembler
+          %-  message-assembler  :*
+            bone.message-id
+            message-seq.message-id
+            authenticated
+            packet-hash.task
+            lane.task
+            inbound-state
+          ==
+        ::
+        =-  abet:(on-carp:assembler -)
+        ::
+        ::  TODO: assert meal and task encodings match?
+        ::
+        :*  (number-to-encoding encoding-num.message-descriptor.meal)
+            num-fragments.message-descriptor.meal
+            fragment-num.meal
+            message-fragment.meal
+        ==
+      ::
+          %fore
+        =/  =lane  (set-forward-origin lane.task lane.meal)
+        (give %fore ship.meal lane payload.meal)
+      ==
+    ::
+    ==
+  ::  |message-assembler: core for assembling received packets into messages
+  ::
+  ++  message-assembler
+    |=  $:  =bone
+            =message-seq
+        ::
+            authenticated=?
+            =packet-hash
+            =lane
+        ::
+            =inbound-state
+        ==
+    |%
+    ++  assembler-core  .
+    ++  abet
+      decoder-core(bone-states (~(put by bone-states) bone inbound-state))
+    ::
+    ++  on-message-completed
+      |=  error=(unit error)
+      ^+  assembler-core
+      ::
+      !!
+    ++  on-bond
+      |=  [route=path message=*]
+      ^+  assembler-core
+      ::
+      !!
+    ++  on-carp
+      |=  [=encoding count=@ud fragment-num=@ud fragment=@]
+      ^+  assembler-core
+      ::
+      !!
+    --
+  --
 ::  +interpret-packet: authenticate and decrypt a packet, effectfully
 ::
 ++  interpret-packet
@@ -1502,7 +1759,7 @@
     %fast  2
     %full  3
   ==
-::  +get-message-id: extract message-id from a +meal, or default to initial value
+::  +get-message-id: extract message-id from a +meal or default to initial value
 ::
 ++  get-message-id
   |=  =meal
@@ -1511,6 +1768,24 @@
     %bond  message-id.meal
     %carp  message-id.message-descriptor.meal
   ==
+::  +set-forward-origin: adjust origin address for forwarded packet
+::
+::    A forwarded packet contains its origin address,
+::    but only after the first hop. If the address
+::    field is empty, we fill it in with the address
+::    we received the packet from. But we replace
+::    %if with %ix, to show that the ultimate receiver
+::    may not be able to send back to the origin
+::    (due to non-full-cone NAT).
+::
+++  set-forward-origin
+  |=  [=new=lane origin=(unit lane)]
+  ^-  lane
+  ::
+  ?~  origin  new-lane
+  ?.  ?=(%if -.u.origin)
+    u.origin
+  [%ix +.u.origin]
 ::  +extract-signed: if valid signature, produce extracted value; else produce ~
 ::
 ++  extract-signed
