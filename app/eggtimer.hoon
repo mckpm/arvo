@@ -15,10 +15,12 @@
   ==
 ++  check-status
   |=  *
-  =/  status=tape  ?~  alarm-time
-    "not set"
-  "set for {(scow %da (need alarm-time))}"
-  ~&  "alarm {status}"
+  =/  msg=tape  ?~  alarm-time
+    "alarm not set"
+  %+  weld
+    "alarm set for {(scow %da (need alarm-time))}: "
+  message
+  ~&  msg
   [~ this]
 ++  set-alarm
   |=  [dur=duration msg=tape]
