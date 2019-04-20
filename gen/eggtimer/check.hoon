@@ -1,0 +1,3 @@
+:-  %say
+|=  *
+[%eggtimer-command %check ~]
